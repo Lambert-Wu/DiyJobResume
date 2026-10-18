@@ -31,10 +31,15 @@ const EXAMPLES = [
   "行距松一点，看着更透气",
 ];
 const TURNS_KEY = "diyjobresume.agent.turns.v1";
+// 每份简历各存一份对话，切换简历不会串台
+const turnsKey = (docId: string) => `${TURNS_KEY}.${docId}`;
 
-function loadTurns(): AgentTurn[] {
+function loadTurns(docId: string): AgentTurn[] {
   try {
-    const raw = localStorage.getItem(TURNS_KEY);
+    // 兼容升级前存在公共键里的对话，读到一次就会被写进当前简历自己的键
+    const raw =
+      localStorage.getItem(turnsKey(docId)) ||
+      localStorage.getItem(TURNS_KEY);
     if (!raw) return [];
     const list = JSON.parse(raw) as AgentTurn[];
     return Array.isArray(list)
@@ -70,6 +75,7 @@ function errorText(e: unknown) {
 
 export function AgentPanel({
   doc,
+  docId,
   pageCount,
   docked = false,
   onApply,
@@ -79,6 +85,7 @@ export function AgentPanel({
   onClose,
 }: {
   doc: Resume;
+  docId: string;
   pageCount: number;
   docked?: boolean;
   onApply: (next: Resume) => void;
@@ -94,7 +101,7 @@ export function AgentPanel({
     [setupOpen, setSetupOpen] = useState(() => !loadAgentConfig().apiKey),
     [agreed, setAgreed] = useState(noticeAccepted),
     [input, setInput] = useState(""),
-    [turns, setTurns] = useState<AgentTurn[]>(loadTurns),
+    [turns, setTurns] = useState<AgentTurn[]>(() => loadTurns(docId)),
     [pending, setPending] = useState<{
       actions: AgentAction[];
       notes: string[];
@@ -118,11 +125,14 @@ export function AgentPanel({
 
   useEffect(() => {
     try {
-      localStorage.setItem(TURNS_KEY, JSON.stringify(turns.slice(-30)));
+      localStorage.setItem(
+        turnsKey(docId),
+        JSON.stringify(turns.slice(-30)),
+      );
     } catch {
       /* 存不下也不影响使用 */
     }
-  }, [turns]);
+  }, [turns, docId]);
 
   const drag = (e: ReactPointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;

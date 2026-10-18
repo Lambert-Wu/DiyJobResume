@@ -26,11 +26,12 @@ import {
   Sparkles,
   PanelLeft,
   PanelRight,
+  FilePlus2,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import {
   PAGE,
-  STORAGE_KEY,
-  OLD_KEY,
   initialResume,
   readResume,
   toMarkdown,
@@ -61,33 +62,17 @@ import { SelectionTools, paragraphOptions } from "./SelectionTools";
 import { withColumns } from "./formatting";
 import { NumericInput, holdDrag } from "./interaction";
 
+import {
+  blankResume,
+  cloneResume,
+  loadLibrary,
+  saveLibrary,
+  uniqueName,
+} from "./docs";
+import type { DocEntry } from "./docs";
 import { CustomCss, compileCustomCss } from "./CustomCss";
 import { AgentPanel } from "./AgentPanel";
 
-function load() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return { doc: readResume(JSON.parse(saved)), notice: "" };
-    const old = localStorage.getItem(OLD_KEY);
-    if (old)
-      return {
-        doc: readResume(JSON.parse(old)),
-        notice: "已迁移旧版文字与图片，原草稿仍保留。旧版自由色块不转入正文。",
-      };
-  } catch {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) localStorage.setItem(STORAGE_KEY + ".recovery", raw);
-    } catch {
-      /* Keep autosave disabled below if storage is unavailable. */
-    }
-    return {
-      doc: initialResume(),
-      notice: "草稿读取失败，原始数据仍保留。请先导出旧稿或导入备份。",
-    };
-  }
-  return { doc: initialResume(), notice: "" };
-}
 function saveFile(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type })),
     a = document.createElement("a");
@@ -461,14 +446,24 @@ function NumberField({
 }
 
 export default function Studio() {
-  const [initial] = useState(load),
-    [doc, setDoc] = useState(initial.doc),
-    ref = useRef(doc);
+  const [boot] = useState(loadLibrary),
+    [docs, setDocs] = useState(boot.library.items),
+    [activeId, setActiveId] = useState(boot.library.activeId);
+  const docsRef = useRef(docs);
+  docsRef.current = docs;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const [doc, setDoc] = useState(
+    () =>
+      boot.library.items.find((item) => item.id === boot.library.activeId)!
+        .doc,
+  );
+  const ref = useRef(doc);
   ref.current = doc;
   const [past, setPast] = useState<Resume[]>([]),
     [future, setFuture] = useState<Resume[]>([]),
     lastGroup = useRef({ key: "", time: 0 });
-  const [notice, setNotice] = useState(initial.notice),
+  const [notice, setNotice] = useState(boot.notice),
     [saved, setSaved] = useState("已保存到本机"),
     [mode, setMode] = useState<"simple" | "md">("simple"),
     [tab, setTab] = useState<"templates" | "modules">("templates");
@@ -481,6 +476,8 @@ export default function Studio() {
     [autoZoom, setAutoZoom] = useState(true),
     [modal, setModal] = useState<"type" | "help" | null>(null),
     [fileMenu, setFileMenu] = useState(false),
+    [docMenu, setDocMenu] = useState(false),
+    [confirmDelete, setConfirmDelete] = useState(false),
     [mobile, setMobile] = useState<"editor" | "preview" | "library">("preview");
   const [pages, setPages] = useState<Piece[][]>([[]]),
     [fontVersion, setFontVersion] = useState(0),
@@ -628,11 +625,26 @@ export default function Studio() {
       { ...ref.current, settings: { ...ref.current.settings, ...patch } },
       "settings",
     );
+  // 把当前文档写回简历列表（切文档、新建、删除前也会调用一次）
+  const flushSave = () => {
+    const current = ref.current,
+      name = current.name.trim() || "未命名简历",
+      id = activeIdRef.current;
+    const items = docsRef.current.map((item) =>
+      item.id === id
+        ? { ...item, name, updatedAt: Date.now(), doc: current }
+        : item,
+    );
+    docsRef.current = items;
+    setDocs(items);
+    saveLibrary({ activeId: id, items });
+    return items;
+  };
   useEffect(() => {
     setSaved("保存中…");
     const save = () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(ref.current));
+        flushSave();
         setSaved("已保存到本机");
       } catch {
         setSaved("保存失败，请下载备份");
@@ -645,6 +657,80 @@ export default function Studio() {
       window.removeEventListener("pagehide", save);
     };
   }, [doc]);
+
+  // 换到某一份：撤销栈、预览、选中都按文档隔离，避免跨文档撤销
+  const activate = (entry: DocEntry, items: DocEntry[]) => {
+    docsRef.current = items;
+    setDocs(items);
+    activeIdRef.current = entry.id;
+    setActiveId(entry.id);
+    ref.current = entry.doc;
+    setDoc(entry.doc);
+    setPast([]);
+    setFuture([]);
+    lastGroup.current = { key: "", time: 0 };
+    pinnedPreview.current = false;
+    setPreview(null);
+    previewScroll.current = null;
+    setSelected("");
+    setDocMenu(false);
+    setConfirmDelete(false);
+    setSaved("已保存到本机");
+    saveLibrary({ activeId: entry.id, items });
+  };
+  const openDoc = (id: string) => {
+    setDocMenu(false);
+    setConfirmDelete(false);
+    if (id === activeIdRef.current) return;
+    flushSave();
+    const target = docsRef.current.find((item) => item.id === id);
+    if (target) activate(target, docsRef.current);
+  };
+  const createDoc = (mode: "blank" | "copy") => {
+    flushSave();
+    const items = docsRef.current,
+      name = uniqueName(
+        items.map((item) => item.name),
+        mode === "blank" ? "未命名简历" : `${doc.name || "简历"} 副本`,
+      ),
+      next =
+        mode === "blank"
+          ? blankResume(doc.template, name)
+          : cloneResume(doc, name),
+      entry: DocEntry = { id: uid(), name, updatedAt: Date.now(), doc: next };
+    activate(entry, [entry, ...items]);
+    setNotice(`已新建「${name}」`);
+  };
+  const importDoc = (incoming: Resume) => {
+    flushSave();
+    const items = docsRef.current,
+      name = uniqueName(
+        items.map((item) => item.name),
+        (incoming.name || "导入的简历").slice(0, 40),
+      ),
+      entry: DocEntry = {
+        id: uid(),
+        name,
+        updatedAt: Date.now(),
+        doc: { ...incoming, name },
+      };
+    activate(entry, [entry, ...items]);
+    setNotice(`已导入「${name}」`);
+  };
+  const removeDoc = () => {
+    if (docsRef.current.length < 2) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    const index = docsRef.current.findIndex(
+      (item) => item.id === activeIdRef.current,
+    );
+    const removed = docsRef.current[index];
+    const remaining = docsRef.current.filter((item) => item.id !== removed.id);
+    activate(remaining[Math.max(0, index - 1)], remaining);
+    setNotice(`已删除「${removed.name}」`);
+  };
   useEffect(() => {
     const loaded = () => setFontVersion((n) => n + 1);
     document.fonts.ready.then(loaded);
@@ -663,6 +749,8 @@ export default function Studio() {
         setArmed("");
         setPicSelection("");
         setFileMenu(false);
+        setDocMenu(false);
+        setConfirmDelete(false);
         setBlockMenu(null);
         cancelPreview();
       }
@@ -670,6 +758,23 @@ export default function Studio() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
+  // 「简历列表」下拉：点别处收起，点列表自己不算
+  useEffect(() => {
+    if (!docMenu) return;
+    const close = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest(".doc-switch")) return;
+      setDocMenu(false);
+      setConfirmDelete(false);
+    };
+    const timer = window.setTimeout(
+      () => document.addEventListener("pointerdown", close),
+      0,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", close);
+    };
+  }, [docMenu]);
   // 「文件」下拉：点页面任何其他地方都收起（点菜单自己和触发按钮不关）
   useEffect(() => {
     if (!fileMenu) return;
@@ -1438,14 +1543,71 @@ export default function Studio() {
             简历工坊<small>写一份看得清的简历。</small>
           </span>
         </a>
-        <input
-          className="document-name"
-          aria-label="简历名称"
-          value={doc.name}
-          onChange={(e) =>
-            historyUpdate({ ...doc, name: e.target.value }, "name")
-          }
-        />
+        <div className="doc-switch">
+          <input
+            className="document-name"
+            aria-label="简历名称"
+            value={doc.name}
+            onChange={(e) =>
+              historyUpdate({ ...doc, name: e.target.value }, "name")
+            }
+          />
+          <button
+            className="doc-toggle"
+            aria-label="我的简历"
+            title="切换 / 新建 / 删除简历"
+            aria-expanded={docMenu}
+            onClick={() => {
+              setDocMenu((open) => !open);
+              setConfirmDelete(false);
+              setFileMenu(false);
+            }}
+          >
+            <ChevronDown size={14} />
+            <small>{docs.length}</small>
+          </button>
+          {docMenu && (
+            <div className="doc-menu" role="menu" aria-label="我的简历">
+              <div className="doc-menu-head">我的简历（{docs.length}）</div>
+              <div className="doc-list">
+                {docs.map((item) => (
+                  <button
+                    key={item.id}
+                    role="menuitemradio"
+                    aria-checked={item.id === activeId}
+                    className={item.id === activeId ? "active" : ""}
+                    title={item.name}
+                    onClick={() => openDoc(item.id)}
+                  >
+                    <span>{item.name}</span>
+                    {item.id === activeId && <Check size={13} />}
+                  </button>
+                ))}
+              </div>
+              <div className="doc-actions">
+                <button onClick={() => createDoc("blank")} title="新建一份空白简历">
+                  <FilePlus2 size={14} />
+                  新建
+                </button>
+                <button onClick={() => createDoc("copy")} title="复制当前这份">
+                  <Copy size={14} />
+                  复制
+                </button>
+                <button
+                  className={confirmDelete ? "danger confirm" : "danger"}
+                  disabled={docs.length < 2}
+                  onClick={removeDoc}
+                  title={
+                    docs.length < 2 ? "至少保留一份简历" : "删除当前这份简历"
+                  }
+                >
+                  <Trash2 size={14} />
+                  {confirmDelete ? "确定删除？" : "删除"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <span
           className={`save-state ${saved.includes("失败") ? "error" : ""}`}
           role="status"
@@ -2130,8 +2292,10 @@ export default function Studio() {
             aria-label="排版助手"
           >
             <AgentPanel
+              key={activeId}
               docked
               doc={doc}
+              docId={activeId}
               pageCount={pages.length}
               onApply={(next) => historyUpdate(next)}
               onPreview={(next) => {
@@ -2511,11 +2675,16 @@ export default function Studio() {
           try {
             if (file.size > 22000000) throw new Error("文件过大。");
             const text = await file.text();
-            const next = file.name.endsWith(".json")
-              ? readResume(JSON.parse(text))
-              : { ...doc, lines: parseMarkdown(text, doc.lines) };
-            historyUpdate(next);
-            setNotice("已导入，原来的内容可通过撤销恢复。");
+            if (file.name.endsWith(".json")) {
+              // 备份文件当成一份新简历，不覆盖当前这份
+              importDoc(readResume(JSON.parse(text)));
+            } else {
+              historyUpdate({
+                ...doc,
+                lines: parseMarkdown(text, doc.lines),
+              });
+              setNotice("已导入正文，原来的内容可通过撤销恢复。");
+            }
           } catch (error) {
             setNotice((error as Error).message);
           }
@@ -2642,6 +2811,16 @@ export default function Studio() {
                   <b>1. 写内容：</b>左侧简单编辑可直接填写；支持
                   **加粗**、*斜体*、`标签` 和
                   [链接](https://example.com)。专业用户可以切换 Markdown。
+                </p>
+                <p>
+                  <b>多份简历：</b>
+                  顶栏简历名称右边的 ▾ 是「我的简历」列表。点「新建」开一份空白，点「复制」把当前这份复制一份，点「删除」删掉当前这份（会先问一次，且至少保留一份）。以前只存过一份草稿的，会自动收进这个列表，不会丢。每份简历的撤销记录和「AI
+                  排版」的对话都是各自独立的。
+                </p>
+                <p>
+                  <b>多份简历：</b>
+                  顶栏简历名称右边的 ▾ 是「我的简历」列表。点「新建」开一份空白，点「复制」把当前这份复制一份，点「删除」删掉当前这份（会先问一次，且至少保留一份）。以前只存过一份草稿的，会自动收进这个列表，不会丢。每份简历的撤销记录和「AI
+                  排版」的对话都是各自独立的。
                 </p>
                 <p>
                   <b>2. 定风格：</b>

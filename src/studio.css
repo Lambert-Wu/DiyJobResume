@@ -2443,3 +2443,147 @@ a {
 .header-history .icon-button:disabled {
   opacity: 0.35;
 }
+
+/* 多份简历：顶栏名称旁边的切换器 */
+.doc-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-left: 1px solid #ddd;
+  padding-left: 12px;
+}
+.doc-switch .document-name {
+  border-left: 0;
+  padding-left: 0;
+  width: 208px;
+}
+.doc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: #9a9187;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.doc-toggle small {
+  font-size: 10px;
+  line-height: 1;
+  min-width: 14px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #efeae3;
+  color: #7d7268;
+}
+.doc-toggle:hover,
+.doc-toggle[aria-expanded="true"] {
+  background: #f0ece5;
+  color: #6d4938;
+}
+.doc-menu {
+  position: absolute;
+  top: 34px;
+  left: 12px;
+  z-index: 90;
+  width: 292px;
+  max-height: min(430px, 72dvh);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px #0002;
+  padding: 6px;
+}
+.doc-menu-head {
+  font-size: 11px;
+  color: #9a9187;
+  padding: 5px 8px 7px;
+}
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow: auto;
+}
+.doc-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #4a443d;
+  text-align: left;
+}
+.doc-list button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.doc-list button:hover {
+  background: #f6f2ec;
+}
+.doc-list button.active {
+  background: #f8ece4;
+  color: #8a4e33;
+  font-weight: 500;
+}
+.doc-list button.active svg {
+  flex: none;
+  color: #b87559;
+}
+.doc-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #eee7dd;
+}
+.doc-actions button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid #e6ded3;
+  background: #fdfbf8;
+  color: #6f6459;
+  border-radius: 6px;
+  padding: 6px 4px;
+  font-size: 11px;
+}
+.doc-actions button:hover:not(:disabled) {
+  border-color: #cbb9a8;
+  background: #fbf4ee;
+  color: #8a4e33;
+}
+.doc-actions button:disabled {
+  opacity: 0.45;
+}
+.doc-actions button.danger {
+  color: #a4402f;
+}
+.doc-actions button.danger:hover:not(:disabled) {
+  border-color: #e2b6a9;
+  background: #fdf1ed;
+}
+.doc-actions button.danger.confirm {
+  background: #b8452f;
+  border-color: #b8452f;
+  color: #fff;
+}
+@media (max-width: 1100px) {
+  .doc-switch .document-name {
+    width: 150px;
+  }
+  .doc-menu {
+    left: 0;
+  }
+}
