@@ -670,6 +670,22 @@ export default function Studio() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
+  // 「文件」下拉：点页面任何其他地方都收起（点菜单自己和触发按钮不关）
+  useEffect(() => {
+    if (!fileMenu) return;
+    const close = (e: PointerEvent) => {
+      if ((e.target as HTMLElement | null)?.closest(".file-wrap")) return;
+      setFileMenu(false);
+    };
+    const timer = window.setTimeout(
+      () => document.addEventListener("pointerdown", close),
+      0,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", close);
+    };
+  }, [fileMenu]);
   const measureNode = useRef<HTMLDivElement | null>(null);
   const measureHost = () => {
     const host = measureRef.current;
@@ -1538,16 +1554,6 @@ export default function Studio() {
                 >
                   <Download size={15} />
                   导出 Markdown
-                </button>
-                <button
-                  onClick={() => {
-                    historyUpdate(initialResume(doc.template));
-                    setFileMenu(false);
-                    setNotice("已载入新版虚构示例，之前的草稿可撤销恢复。");
-                  }}
-                >
-                  <FileText size={15} />
-                  使用新版示例（可撤销）
                 </button>
                 <button
                   onClick={() => {
