@@ -415,6 +415,22 @@ export function moveGroup(doc: Resume, id: string, target: string): Resume {
   lines.splice(b > a ? b - part.length : b, 0, ...part);
   return { ...doc, lines };
 }
+// 把 id 所在的块（section/entry 会带上它后面的内容）移到第 boundary 行之前。
+// boundary 用「原数组下标」表示，等于 lines.length 时就是移到末尾。
+export function moveGroupToBoundary(
+  doc: Resume,
+  id: string,
+  boundary: number,
+): Resume {
+  const from = doc.lines.findIndex((l) => l.id === id);
+  if (from < 0) return doc;
+  const end = groupEnd(doc.lines, from);
+  if (boundary >= from && boundary <= end) return doc;
+  const part = doc.lines.slice(from, end),
+    rest = [...doc.lines.slice(0, from), ...doc.lines.slice(end)];
+  rest.splice(boundary > end ? boundary - part.length : boundary, 0, ...part);
+  return { ...doc, lines: rest };
+}
 const numeric = (v: unknown, d: number, min: number, max: number) =>
   typeof v === "number" && Number.isFinite(v)
     ? Math.min(max, Math.max(min, v))

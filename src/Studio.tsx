@@ -37,7 +37,7 @@ import {
   kindLabels,
   uid,
   paginate,
-  moveGroup,
+  moveGroupToBoundary,
   groupEnd,
 } from "./flow";
 import type {
@@ -306,7 +306,7 @@ function Editable({
   onEnter: () => void;
   onRemove: () => void;
   onDrop: (id: string) => void;
-  onMove: (target: string) => void;
+  onMove: (target: string, after: boolean) => void;
   onBlur: () => void;
   ghost?: boolean;
   flashing?: boolean;
@@ -1124,6 +1124,18 @@ export default function Studio() {
       at = doc.lines.findIndex((l) => l.id === id);
     return start >= 0 && at >= start && at < groupEnd(doc.lines, start);
   };
+  // 把 dragId 这块挪到 target 那一行前面（after=true 表示挪到它后面）
+  const dropLineAt = (dragId: string, target: string, after: boolean) => {
+    const lines = ref.current.lines,
+      at = lines.findIndex((l) => l.id === target);
+    if (at < 0) return;
+    const next = moveGroupToBoundary(
+      ref.current,
+      dragId,
+      after ? groupEnd(lines, at) : at,
+    );
+    if (next !== ref.current) historyUpdate(next);
+  };
   const backspaceLine = (id: string) => {
     const lines = [...ref.current.lines],
       i = lines.findIndex((l) => l.id === id);
@@ -1541,8 +1553,8 @@ export default function Studio() {
                       scrollPaperTo(line.id);
                     }}
                     onPointerDown={(e) =>
-                      holdDrag(e, line.id, (target) =>
-                        historyUpdate(moveGroup(ref.current, line.id, target)),
+                      holdDrag(e, line.id, (target, after) =>
+                        dropLineAt(line.id, target, after),
                       )
                     }
                   >
@@ -1556,11 +1568,9 @@ export default function Studio() {
                             holdDrag(
                               e,
                               line.id,
-                              (target) => {
+                              (target, after) => {
                                 if (!target || target === line.id) return;
-                                historyUpdate(
-                                  moveGroup(ref.current, line.id, target),
-                                );
+                                dropLineAt(line.id, target, after);
                                 flashLine(line.id);
                               },
                               0,
@@ -1830,20 +1840,11 @@ export default function Studio() {
                       }
                       onRemove={() => removeLine(piece.line.id)}
                       onDrop={(id) => {
-                        if (id)
-                          historyUpdate(
-                            moveGroup(ref.current, id, piece.line.id),
-                          );
+                        if (id) dropLineAt(id, piece.line.id, false);
                         setArmed("");
                       }}
-                      onMove={(target) => {
-                        historyUpdate(
-                          moveGroup(
-                            ref.current,
-                            sectionStart(piece.line.id),
-                            sectionStart(target),
-                          ),
-                        );
+                      onMove={(target, after) => {
+                        dropLineAt(piece.line.id, target, after);
                         setArmed("");
                       }}
                       onBlur={() => setArmed("")}

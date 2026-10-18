@@ -64,19 +64,38 @@ export function NumericInput({
 export function holdDrag(
   e: ReactPointerEvent,
   id: string,
-  onMove: (target: string) => void,
+  onMove: (target: string, after: boolean) => void,
   holdMs = 350,
 ) {
   if (e.button !== 0) return;
   if (holdMs && (e.target as HTMLElement).closest("button,input,select,a")) return;
   const handle = e.currentTarget as HTMLElement,
     startX = e.clientX,
-    startY = e.clientY;
+    startY = e.clientY,
+    root =
+      handle.closest?.<HTMLElement>(".simple-editor,.paper-workspace") ??
+      document.body;
   let active = false,
-    target: HTMLElement | null = null;
+    target: HTMLElement | null = null,
+    after = false;
   const clearTarget = () => {
     target?.classList.remove("drop-target");
     target = null;
+    after = false;
+  };
+  // 落点只看纵向位置：手柄在行左边外面，按鼠标坐标找元素会永远找不到行
+  const pickAt = (y: number) => {
+    const rows = Array.from(
+      root.querySelectorAll?.<HTMLElement>("[data-field],[data-line]") ?? [],
+    );
+    let last: HTMLElement | null = null;
+    for (const row of rows) {
+      const box = row.getBoundingClientRect();
+      if (!box.height) continue;
+      last = row;
+      if (y < box.top + box.height / 2) return { row, after: false };
+    }
+    return last ? { row: last, after: true } : null;
   };
   const activate = () => {
     active = true;
@@ -111,26 +130,23 @@ export function holdDrag(
     event.preventDefault();
     window.getSelection()?.removeAllRanges();
     clearTarget();
-    target =
-      document
-        .elementFromPoint(event.clientX, event.clientY)
-        ?.closest<HTMLElement>("[data-line],[data-field]") || null;
+    const hit = pickAt(event.clientY);
+    target = hit?.row ?? null;
+    after = hit?.after ?? false;
     if ((target?.dataset.line || target?.dataset.field) !== id)
       target?.classList.add("drop-target");
-    const scroller = target?.closest<HTMLElement>(
-      ".paper-workspace,.simple-editor",
-    );
-    if (scroller) {
-      const r = scroller.getBoundingClientRect();
-      if (event.clientY < r.top + 55) scroller.scrollTop -= 22;
-      else if (event.clientY > r.bottom - 55) scroller.scrollTop += 22;
+    const box = root.getBoundingClientRect?.();
+    if (box && typeof root.scrollTop === "number") {
+      if (event.clientY < box.top + 55) root.scrollTop -= 22;
+      else if (event.clientY > box.bottom - 55) root.scrollTop += 22;
     }
   };
   const end = () => {
-    const dest = target?.dataset.line || target?.dataset.field;
-    const moved = active;
+    const dest = target?.dataset.line || target?.dataset.field,
+      dropAfter = after,
+      moved = active;
     cleanup();
-    if (moved && dest && dest !== id) onMove(dest);
+    if (moved && dest && dest !== id) onMove(dest, dropAfter);
   };
   const cancel = () => cleanup();
   const leave = () => {
