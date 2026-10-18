@@ -3,6 +3,8 @@ import {
   AGENT_CONTENT_PROMPT,
   AGENT_SYSTEM_PROMPT,
   applyAgentActions,
+  buildAgentMessages,
+  changesDigest,
   describeDoc,
   parseAgentReply,
 } from "./agent";
@@ -128,6 +130,51 @@ describe("agent content actions", () => {
       { type: "setKind", line: 5, kind: "section" },
     ]);
     expect(next.doc.lines[4].kind).toBe("section");
+  });
+});
+
+describe("agent conversation memory", () => {
+  it("passes earlier turns and what was applied to the model", () => {
+    const messages = buildAgentMessages(
+      "系统",
+      [
+        { role: "user", text: "行距紧一点" },
+        {
+          role: "assistant",
+          text: "好了，收到 1.35",
+          notes: ["行距 1.5 → 1.35"],
+        },
+        { role: "user", text: "再紧一点" },
+        {
+          role: "assistant",
+          text: "那就 1.25",
+          rejected: true,
+        },
+      ],
+      "刚才那个不要，回到第一次",
+    );
+    expect(messages[0]).toEqual({ role: "system", content: "系统" });
+    expect(messages[1]).toEqual({ role: "user", content: "行距紧一点" });
+    expect(messages[2].content).toContain("行距 1.5 → 1.35");
+    expect(messages[4].content).toContain("没有接受");
+    expect(messages.at(-1)?.content).toBe("刚才那个不要，回到第一次");
+  });
+  it("never starts the history with an assistant message", () => {
+    const messages = buildAgentMessages(
+      "系统",
+      [{ role: "assistant", text: "你好" }],
+      "继续",
+    );
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toEqual({ role: "user", content: "继续" });
+  });
+  it("summarizes applied changes for the system prompt", () => {
+    const digest = changesDigest([
+      { role: "user", text: "a" },
+      { role: "assistant", text: "b", notes: ["换成学术风"] },
+      { role: "assistant", text: "c", rejected: true },
+    ]);
+    expect(digest).toEqual(["换成学术风", "（有一版方案被拒绝，简历未改）"]);
   });
 });
 

@@ -19,6 +19,10 @@ export interface AgentConfig {
 export interface AgentTurn {
   role: "user" | "assistant";
   text: string;
+  /** 助手这一轮实际应用的改动，回传给模型当记忆 */
+  notes?: string[];
+  /** 用户没有接受这一轮方案 */
+  rejected?: boolean;
 }
 export interface AgentReply {
   reply: string;
@@ -161,7 +165,58 @@ export const AGENT_SYSTEM_PROMPT = `你是简历助手。用户会用中文描�
 - 用户说“学术/简洁/商务/标签风”之类的感觉时，挑最接近的模板并说明选择理由。
 - 一次最多给 6 个动作，不要重复堆叠同一种动作。
 - 只要用户的要求能用上面的动作实现，就必须在 actions 里给出动作，不能只在 reply 里描述。
-- 如果用户的请求和排版无关（比如改文案、写经历），actions 返回空数组，并在 reply 里说明你只做排版。`;
+- 你可以看到这段对话的历史，用户说“再紧一点”“刚才那个模板”“回到之前那样”时，按历史里已经应用过的改动为基准继续调整。
+- 如果请求和这份简历完全无关（闲聊、写代码等），actions 返回空数组，并在 reply 里说明你只处理这份简历。`;
+
+const HISTORY_TURNS = 24;
+const HISTORY_CHARS = 6000;
+
+function turnSuffix(turn: AgentTurn) {
+  if (turn.role !== "assistant") return "";
+  if (turn.rejected) return "\n（这一版方案用户没有接受，简历保持原样）";
+  if (turn.notes?.length)
+    return "\n（这一版实际应用到简历的改动：" + turn.notes.join("；") + "）";
+  return "";
+}
+
+// 把历史对话整理成 messages：保留最近若干轮，余额按字符数截断；
+// 助手的每一轮会带上“实际改了什么”，模型才知道前后文到底发生了什么。
+export function buildAgentMessages(
+  system: string,
+  turns: AgentTurn[],
+  input: string,
+) {
+  const picked: AgentTurn[] = [];
+  let chars = 0;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    const cost = turn.text.length + (turn.notes?.join("").length || 0);
+    if (picked.length >= HISTORY_TURNS || chars + cost > HISTORY_CHARS) break;
+    picked.unshift(turn);
+    chars += cost;
+  }
+  // 历史必须以 user 开头，避免出现没有对应问题的 assistant
+  while (picked.length && picked[0].role === "assistant") picked.shift();
+  return [
+    { role: "system", content: system },
+    ...picked.map((turn) => ({
+      role: turn.role,
+      content: turn.text + turnSuffix(turn),
+    })),
+    { role: "user", content: input },
+  ];
+}
+
+// 供系统提示用的“这次会话已经做过的改动”，超出对话窗口也能记住
+export function changesDigest(turns: AgentTurn[], limit = 12) {
+  const out: string[] = [];
+  for (const turn of turns) {
+    if (turn.role !== "assistant") continue;
+    if (turn.notes?.length) out.push(turn.notes.join("、"));
+    else if (turn.rejected) out.push("（有一版方案被拒绝，简历未改）");
+  }
+  return out.slice(-limit);
+}
 
 export async function requestAgent(
   config: AgentConfig,
@@ -181,14 +236,7 @@ export async function requestAgent(
     body: JSON.stringify({
       model: config.model.trim(),
       temperature: 0.2,
-      messages: [
-        { role: "system", content: system },
-        ...turns.slice(-6).map((turn) => ({
-          role: turn.role,
-          content: turn.text,
-        })),
-        { role: "user", content: input },
-      ],
+      messages: buildAgentMessages(system, turns, input),
     }),
   });
   if (!res.ok) {

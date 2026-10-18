@@ -14,6 +14,7 @@ import {
   AGENT_SYSTEM_PROMPT,
   acceptNotice,
   applyAgentActions,
+  changesDigest,
   describeDoc,
   loadAgentConfig,
   noticeAccepted,
@@ -45,6 +46,14 @@ function loadTurns(): AgentTurn[] {
               typeof t.text === "string",
           )
           .slice(-30)
+          .map((t) => ({
+            role: t.role,
+            text: t.text,
+            notes: Array.isArray(t.notes)
+              ? t.notes.filter((n) => typeof n === "string").slice(0, 20)
+              : undefined,
+            rejected: t.rejected === true || undefined,
+          }))
       : [];
   } catch {
     return [];
@@ -90,6 +99,7 @@ export function AgentPanel({
       actions: AgentAction[];
       notes: string[];
       skipped: string[];
+      turnAt: number;
     } | null>(null),
     [busy, setBusy] = useState(false),
     [testing, setTesting] = useState(false),
@@ -207,15 +217,23 @@ export function AgentPanel({
     }
     setBusy(true);
     setError("");
+    // 上一版方案还没被接受就又问新问题 → 记成“没接受”，方便模型理解上下文
+    if (pending) markRejected(pending.turnAt);
     setPending(null);
     onClearPreview();
     // 先把用户这句话和“正在生成”放上去，再去请求
     setInput("");
     setTurns((all) => [...all, { role: "user", text }]);
     const history = turns;
+    const digest = changesDigest(history);
+    const assistantAt = history.length + 1;
     const system =
       AGENT_SYSTEM_PROMPT +
       AGENT_CONTENT_PROMPT +
+      (digest.length
+        ? "\n\n本次会话里你已经应用过的改动（从旧到新，可作为“再紧一点”这类相对要求的基准）：\n" +
+          digest.map((d, i) => `${i + 1}. ${d}`).join("\n")
+        : "") +
       "\n\n当前简历参数与正文：\n" +
       describeDoc(doc, pageCount, true);
     const controller = new AbortController(),
@@ -232,6 +250,7 @@ export function AgentPanel({
           actions: reply.actions,
           notes: applied.notes,
           skipped: applied.skipped,
+          turnAt: assistantAt,
         });
         if (applied.notes.length) onPreview(applied.doc);
       }
@@ -243,16 +262,32 @@ export function AgentPanel({
     }
   };
 
+  const markApplied = (at: number, notes: string[]) =>
+    setTurns((all) =>
+      all.map((turn, index) =>
+        index === at ? { ...turn, notes, rejected: undefined } : turn,
+      ),
+    );
+  const markRejected = (at: number) =>
+    setTurns((all) =>
+      all.map((turn, index) =>
+        index === at ? { ...turn, rejected: true, notes: undefined } : turn,
+      ),
+    );
+
   const accept = () => {
     if (!pending) return;
     // 按当前文档重算，避免中途改过内容被旧快照覆盖
-    onApply(applyAgentActions(doc, pending.actions).doc);
+    const fresh = applyAgentActions(doc, pending.actions);
+    onApply(fresh.doc);
+    markApplied(pending.turnAt, fresh.notes);
     onClearPreview();
     registerPreviewApi(null);
     setPending(null);
   };
   const reject = () => {
     if (!pending) return;
+    markRejected(pending.turnAt);
     onClearPreview();
     registerPreviewApi(null);
     setPending(null);
@@ -292,7 +327,11 @@ export function AgentPanel({
         <Sparkles size={16} />
         <b>排版助手</b>
         <span className="agent-sub">
-          {docked ? "占用样式面板，改完自动切回" : "只改排版，不改文字"}
+          {turns.length
+            ? `已记住 ${Math.ceil(turns.length / 2)} 轮对话`
+            : docked
+              ? "占用样式面板，改完自动切回"
+              : "能改排版，也能改文字"}
         </span>
         <div className="agent-tools">
           <button aria-label="清空对话" title="清空对话" onClick={clear}>
