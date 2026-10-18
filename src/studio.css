@@ -1435,7 +1435,7 @@ a {
   background: #e8d0bf;
 }
 .simple-editor {
-  padding: 24px 22px 70px 48px;
+  padding: 24px 22px 70px 30px;
 }
 .edit-field {
   margin-bottom: 3px;
@@ -1475,7 +1475,7 @@ a {
 }
 .block-gutter {
   position: absolute;
-  left: -37px;
+  left: -25px;
   top: 3px;
   opacity: 0;
   transition: opacity 0.12s;
@@ -1494,13 +1494,6 @@ a {
 .block-gutter button:hover {
   background: #e9e3dc;
   color: #6d4938;
-}
-.block-gutter .drag-grip {
-  cursor: grab;
-  color: #a99280;
-}
-.block-gutter .drag-grip:active {
-  cursor: grabbing;
 }
 .edit-field.moving-block {
   opacity: 0.6;
@@ -1723,7 +1716,7 @@ a {
 }
 @media (max-width: 700px) {
   .simple-editor {
-    padding-left: 42px;
+    padding-left: 28px;
   }
   .selection-tools {
     gap: 0;
