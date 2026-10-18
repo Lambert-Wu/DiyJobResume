@@ -14,11 +14,11 @@ import {
   X,
   Plus,
   GripVertical,
-  Crosshair,
   Check,
   ChevronDown,
   FileText,
   HelpCircle,
+  Sparkles,
   PanelLeft,
   PanelRight,
 } from "lucide-react";
@@ -57,6 +57,7 @@ import { withColumns } from "./formatting";
 import { NumericInput, holdDrag } from "./interaction";
 
 import { CustomCss, compileCustomCss } from "./CustomCss";
+import { AgentPanel } from "./AgentPanel";
 
 function load() {
   try {
@@ -464,6 +465,7 @@ export default function Studio() {
     [flash, setFlash] = useState("");
   const [panelPosition, setPanelPosition] = useState({ x: 16, y: 82 });
   const [cssOpen, setCssOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const pinnedPreview = useRef(false);
   const [preview, setPreview] = useState<{
@@ -495,6 +497,7 @@ export default function Studio() {
     editorRef = useRef<HTMLDivElement>(null);
   const pendingCaret = useRef<{ id: string; offset: number } | null>(null);
   const flashTimer = useRef(0);
+  const gripDown = useRef<{ id: string; y: number } | null>(null);
   const mdSyncing = useRef(false);
   const markWord = useRef<HTMLDivElement>(null),
     markBar = useRef<HTMLDivElement>(null);
@@ -1384,6 +1387,15 @@ export default function Studio() {
           </div>
           <button
             className="icon-button"
+            title="排版助手（AI）"
+            aria-label="排版助手"
+            aria-pressed={agentOpen}
+            onClick={() => setAgentOpen(!agentOpen)}
+          >
+            <Sparkles size={18} />
+          </button>
+          <button
+            className="icon-button"
             title="使用帮助"
             aria-label="使用帮助"
             onClick={() => setModal("help")}
@@ -1508,7 +1520,7 @@ export default function Studio() {
           </div>
           <div className="editor-hint">
             {mode === "simple"
-              ? "直接输入 · 选中文字设置格式 · 左侧手柄按住可拖动换位置"
+              ? "直接输入 · 选中文字设置格式 · 左侧手柄按一下定位、按住拖动排序"
               : "选中文字设置格式 · 支持一级至六级标题与列表"}
           </div>
           {mode === "md" ? (
@@ -1581,8 +1593,9 @@ export default function Studio() {
                         <button
                           className="drag-grip"
                           aria-label={`拖动第 ${index + 1} 行调整顺序`}
-                          title="按住拖动，调整这条的位置"
-                          onPointerDown={(e) =>
+                          title="点一下定位到正文 · 按住拖动调整位置"
+                          onPointerDown={(e) => {
+                            gripDown.current = { id: line.id, y: e.clientY };
                             holdDrag(
                               e,
                               line.id,
@@ -1593,17 +1606,17 @@ export default function Studio() {
                               },
                               0,
                               blockAllow(line.id),
-                            )
-                          }
+                            );
+                          }}
+                          onClick={(e) => {
+                            const start = gripDown.current;
+                            gripDown.current = null;
+                            if (!start || start.id !== line.id) return;
+                            if (Math.abs(e.clientY - start.y) > 4) return;
+                            revealInPaper(line.id, true);
+                          }}
                         >
                           <GripVertical size={13} />
-                        </button>
-                        <button
-                          aria-label={`在简历中定位第 ${index + 1} 行`}
-                          title="在简历中定位"
-                          onClick={() => revealInPaper(line.id, true)}
-                        >
-                          <Crosshair size={13} />
                         </button>
                         <button
                           aria-label={`添加内容 ${index + 1}`}
@@ -2226,6 +2239,14 @@ export default function Studio() {
           模板与内容
         </button>
       </nav>
+      {agentOpen && (
+        <AgentPanel
+          doc={doc}
+          pageCount={pages.length}
+          onApply={(next) => historyUpdate(next)}
+          onClose={() => setAgentOpen(false)}
+        />
+      )}
       <div ref={markWord} className="caret-word" aria-hidden="true" />
       <div ref={markBar} className="caret-bar" aria-hidden="true" />
       <div ref={mdMarkRef} className="md-line-mark" aria-hidden="true" />
