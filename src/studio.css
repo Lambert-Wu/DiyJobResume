@@ -2609,3 +2609,17 @@ a {
 .doc-menu {
   top: 42px;
 }
+
+/* 「已保存到本机」原来是绝对定位（按编辑区左边缘对齐），加了 ▾ 之后正好压在按钮上；
+   现在让它回到文档流，排在名称和 ▾ 后面 */
+.app-header .save-state {
+  position: static;
+  left: auto;
+  top: auto;
+  flex: none;
+}
+@media (max-width: 1120px) {
+  .app-header .save-state {
+    display: none;
+  }
+}
