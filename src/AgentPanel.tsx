@@ -243,14 +243,6 @@ export function AgentPanel({
               text: "模型给的动作都没法执行，所以右侧没有预览。",
             },
           ]);
-      } else {
-        setTurns((all) => [
-          ...all,
-          {
-            role: "assistant",
-            text: "这次没有生成排版改动，所以右侧没有预览。可以说得更具体些，例如「行距松一点」「换成青岚模板」「把专业技能排到最前面」。",
-          },
-        ]);
       }
     } catch (e) {
       setError(errorText(e));
