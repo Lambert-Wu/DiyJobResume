@@ -23,7 +23,7 @@ import {
   saveAgentConfig,
 } from "./agent";
 import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
-import { contentToLines } from "./importText";
+import { layoutSteps, textToLines } from "./importText";
 import type { Resume } from "./flow";
 
 const EXAMPLES = [
@@ -97,6 +97,13 @@ export function AgentPanel({
     [input, setInput] = useState(""),
     [tab, setTab] = useState<"chat" | "paste">("chat"),
     [pasteText, setPasteText] = useState(""),
+    [running, setRunning] = useState(false),
+    [progress, setProgress] = useState<string[]>([]),
+    [layoutResult, setLayoutResult] = useState<{
+      before: Resume;
+      after: Resume;
+      total: number;
+    } | null>(null),
     [turns, setTurns] = useState<AgentTurn[]>(() => loadTurns(docId)),
     [pending, setPending] = useState<{
       actions: AgentAction[];
@@ -316,7 +323,7 @@ export function AgentPanel({
   const pasteInfo = useMemo(() => {
     if (!pasteText.trim()) return { count: 0, error: "" };
     try {
-      return { count: contentToLines(pasteText).length, error: "" };
+      return { count: textToLines(pasteText).length, error: "" };
     } catch (e) {
       return {
         count: 0,
@@ -324,27 +331,36 @@ export function AgentPanel({
       };
     }
   }, [pasteText]);
-  const buildPaste = () => {
+  const wait = (ms: number) =>
+    new Promise((resolve) => window.setTimeout(resolve, ms));
+  // 一键排版：分几步跑给用户看，最后直接写进简历（不再问接受与否）
+  const runLayout = async () => {
     const text = pasteText.trim();
-    if (!text) return;
+    if (!text || running) return;
     setError("");
-    const actions = [{ type: "setContent", text }];
+    setRunning(true);
+    setProgress([]);
+    const before = doc;
     try {
-      const applied = applyAgentActions(doc, actions);
-      if (!applied.notes.length) {
-        setError(applied.skipped.join("；") || "没读出内容，检查一下文字格式？");
-        return;
+      let index = 0,
+        last = doc;
+      for (const stage of layoutSteps(text)) {
+        await wait(index++ ? 200 : 60);
+        setProgress((all) => [...all, stage.label]);
+        last = { ...doc, lines: stage.lines };
       }
-      setPending({
-        actions,
-        notes: applied.notes,
-        skipped: applied.skipped,
-        turnAt: -1,
-      });
-      onPreview(applied.doc);
+      onApply(last);
+      setLayoutResult({ before, after: last, total: last.lines.length });
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setRunning(false);
     }
+  };
+  const undoLayout = () => {
+    if (!layoutResult) return;
+    onApply(layoutResult.before);
+    setLayoutResult(null);
   };
 
   const clear = () => {
@@ -494,6 +510,7 @@ export function AgentPanel({
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
+            disabled={running}
             spellCheck={false}
             aria-label="粘贴整份简历"
           />
@@ -509,12 +526,34 @@ export function AgentPanel({
             </span>
             <button
               className="primary"
-              disabled={!pasteInfo.count}
-              onClick={buildPaste}
+              disabled={!pasteInfo.count || running}
+              onClick={() => void runLayout()}
             >
-              生成排版预览
+              {running ? "排版中…" : "开始排版"}
             </button>
           </div>
+          {!!progress.length && (
+            <ol className="agent-steps">
+              {progress.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+              {running && <li className="agent-steps-active">正在处理…</li>}
+            </ol>
+          )}
+          {layoutResult && !running && (
+            <div className="agent-done">
+              <span>
+                已排好 {layoutResult.total} 行
+                {doc === layoutResult.after ? "" : "（内容已改动，撤销会一起还原）"}
+              </span>
+              <button
+                onClick={undoLayout}
+                title="回到排版前的样子"
+              >
+                撤销排版
+              </button>
+            </div>
+          )}
         </div>
       )}
 

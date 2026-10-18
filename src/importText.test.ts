@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   contentToLines,
+  layoutSteps,
   looksLikeMarkdown,
   looksLikeResumeBlock,
   textToLines,
@@ -84,6 +85,69 @@ describe("pasted resume text", () => {
         "李景阳\n电话：123\n· 一条\n· 两条\n· 三条",
       ),
     ).toBe(true);
+  });
+
+  it("splits section markers written inline", () => {
+    const lines = textToLines("李景阳\n【项目经历】某项目\n教育背景：东莞理工学院");
+    expect(lines.map((line) => [line.kind, line.text])).toEqual([
+      ["name", "李景阳"],
+      ["section", "项目经历"],
+      ["text", "某项目"],
+      ["section", "教育背景"],
+      ["text", "东莞理工学院"],
+    ]);
+  });
+
+  it("glues a bullet that was hard-wrapped while copying", () => {
+    const lines = textToLines(RAW.replace(
+      "· 有信息化系统部署与运维实战经验：基于 Docker / Linux 完成服务部署。",
+      "· 有信息化系统部署与运维实战经验：基于 Docker / Linux 完成服务部署，\n并且熟悉日志与进程守护。",
+    ));
+    const merged = lines.find((line) => line.text.includes("日志与进程守护"));
+    expect(merged?.kind).toBe("bullet");
+    expect(lines.some((line) => line.text === "并且熟悉日志与进程守护。")).toBe(
+      false,
+    );
+  });
+
+  it("removes duplicated contact lines and keeps one", () => {
+    const lines = textToLines(
+      "李景阳\n电话：18319206783\n电话：18319206783\n【个人总结】\n· 一条",
+    );
+    expect(
+      lines.filter((line) => line.text.includes("18319206783")),
+    ).toHaveLength(1);
+  });
+
+  it("promotes a buried name to the top", () => {
+    const lines = textToLines(
+      "电话：138 0000 0000 ｜ 邮箱：a@b.com\n李景阳\n【个人总结】\n· 一条",
+    );
+    expect(lines[0]).toMatchObject({ kind: "name", text: "李景阳" });
+    expect(lines[1].text).toContain("138 0000 0000");
+  });
+
+  it("drops sections that have no content", () => {
+    const lines = textToLines("李景阳\n【其他】\n【证书】\n· 驾驶证");
+    expect(lines.map((line) => line.text)).not.toContain("其他");
+    expect(lines.some((line) => line.kind === "section" && line.text === "证书")).toBe(
+      true,
+    );
+  });
+
+  it("turns numbered rows into an ordered list", () => {
+    const lines = textToLines("李景阳\n【工作经历】\n1. 第一件事\n2、第二件事");
+    const ordered = lines.filter((line) => line.kind === "ordered");
+    expect(ordered.map((line) => line.order)).toEqual([1, 2]);
+  });
+
+  it("reports layout stages and ends with the final lines", () => {
+    const stages = Array.from(layoutSteps(RAW));
+    expect(stages).toHaveLength(5);
+    expect(stages[0].label).toContain("清洗文字");
+    const brief = (list: { kind: string; text: string }[]) =>
+      list.map((line) => [line.kind, line.text]);
+    expect(brief(stages.at(-1)!.lines)).toEqual(brief(textToLines(RAW)));
   });
 
   it("accepts markdown output as well", () => {
