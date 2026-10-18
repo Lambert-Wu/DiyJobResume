@@ -179,6 +179,25 @@ export function AgentPanel({
     }
   };
 
+  const askModel = async (
+    system: string,
+    history: AgentTurn[],
+    question: string,
+    signal: AbortSignal,
+  ) => {
+    const first = await requestAgent(config, system, history, question, signal);
+    if (first.actions.length) return first;
+    const retry = await requestAgent(
+      config,
+      system + "\n\n重要：必须只输出一个 JSON 对象，并在 actions 里给出动作数组。",
+      history,
+      question +
+        "\n（只输出 JSON；如果确实不需要任何排版改动，actions 返回空数组，并在 reply 里说明原因。）",
+      signal,
+    );
+    return retry.actions.length ? retry : first;
+  };
+
   const send = async () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -198,13 +217,7 @@ export function AgentPanel({
     const controller = new AbortController(),
       timer = window.setTimeout(() => controller.abort(), 90000);
     try {
-      const reply = await requestAgent(
-        config,
-        system,
-        turns,
-        text,
-        controller.signal,
-      );
+      const reply = await askModel(system, turns, text, controller.signal);
       setTurns((all) => [
         ...all,
         { role: "user", text },
@@ -219,7 +232,23 @@ export function AgentPanel({
           skipped: applied.skipped,
           actions: reply.actions,
         });
-        onPreview(applied.doc);
+        if (applied.notes.length) onPreview(applied.doc);
+        else
+          setTurns((all) => [
+            ...all,
+            {
+              role: "assistant",
+              text: "模型给的动作都没法执行，所以右侧没有预览。",
+            },
+          ]);
+      } else {
+        setTurns((all) => [
+          ...all,
+          {
+            role: "assistant",
+            text: "这次没有生成排版改动，所以右侧没有预览。可以说得更具体些，例如「行距松一点」「换成青岚模板」「把专业技能排到最前面」。",
+          },
+        ]);
       }
     } catch (e) {
       setError(errorText(e));
@@ -255,11 +284,11 @@ export function AgentPanel({
           AGENT_SYSTEM_PROMPT +
           `\n\n当前简历排版参数：\n${describeDoc(current, pages)}` +
           `\n\n任务：这份简历现在排成 ${pages} 页，请给出让页数更接近 1 页的排版动作（优先 compact、缩小字号、收紧段距、减小页边距），不要改文字。`;
-        const reply = await requestAgent(
-          config,
+        const reply = await askModel(
           system,
           [],
           `第 ${round} 轮：继续压缩到 1 页。`,
+          AbortSignal.timeout(90000),
         );
         const applied = applyAgentActions(current, reply.actions);
         if (!applied.notes.length) {
@@ -297,7 +326,7 @@ export function AgentPanel({
           role: "assistant",
           text:
             after <= 1
-              ? `已经压到 1 页（改了 ${round} 轮）。确认后点「应用到简历」。`
+              ? `已经压到 1 页（改了 ${round} 轮）。右侧是效果，点「接受」才写入。`
               : `压到 ${after} 页，仍超过一页。可以先应用看看，或者再点一次继续压。`,
         },
       ]);
