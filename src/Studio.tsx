@@ -422,6 +422,7 @@ export default function Studio() {
     editorRef = useRef<HTMLDivElement>(null);
   const pendingCaret = useRef<{ id: string; offset: number } | null>(null);
   const flashTimer = useRef(0);
+  const mdSyncing = useRef(false);
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const contactId = view.lines.find(
     (line, index) =>
@@ -651,11 +652,15 @@ export default function Studio() {
           (index ? 1 : 0);
       const el = mdRef.current;
       if (el) {
+        mdSyncing.current = true;
         el.setSelectionRange(
           start,
           start + toMarkdown([ref.current.lines[index]]).length,
         );
         el.scrollTop = Math.max(0, index * 25 - 6);
+        window.requestAnimationFrame(() => {
+          mdSyncing.current = false;
+        });
       }
     }
   };
@@ -688,6 +693,33 @@ export default function Studio() {
       setMobile("preview");
       window.setTimeout(() => scrollPaperTo(id), 90);
     } else scrollPaperTo(id);
+  };
+  // Markdown 模式下：光标在哪一行，右边纸张就滚到对应的那块
+  const jumpFromCaret = () => {
+    const el = mdRef.current;
+    if (!el || mdSyncing.current) return;
+    const lines = ref.current.lines;
+    if (!lines.length) return;
+    // 按每行在 Markdown 里占的字符数累加，兼容行内换行
+    const caret = el.selectionStart ?? 0;
+    let start = 0,
+      at = 0;
+    for (let i = 0; i < lines.length; i++) {
+      at = i;
+      const len = toMarkdown([lines[i]]).length;
+      if (caret <= start + len) break;
+      start += len + 1;
+    }
+    let index = at;
+    while (index < lines.length && lines[index].kind === "blank") index++;
+    if (index >= lines.length) {
+      index = at;
+      while (index > 0 && lines[index].kind === "blank") index--;
+    }
+    const id = lines[index]?.id;
+    if (!id) return;
+    setSelected(id);
+    scrollPaperTo(id);
   };
   const addLine = (
     after: string,
@@ -1222,6 +1254,16 @@ export default function Studio() {
               spellCheck={false}
               aria-label="Markdown 简历内容"
               value={source}
+              onClick={jumpFromCaret}
+              onSelect={jumpFromCaret}
+              onKeyUp={(e) => {
+                if (
+                  ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(
+                    e.key,
+                  )
+                )
+                  jumpFromCaret();
+              }}
               onChange={(e) => {
                 try {
                   historyUpdate(
