@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
   Github,
@@ -489,11 +496,22 @@ export default function Studio() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const pinnedPreview = useRef(false);
+  const agentPreviewApi = useRef<{
+    accept: () => void;
+    reject: () => void;
+  } | null>(null);
+  const registerAgentPreview = useCallback(
+    (api: { accept: () => void; reject: () => void } | null) => {
+      agentPreviewApi.current = api;
+    },
+    [],
+  );
   const [preview, setPreview] = useState<{
     key: string;
     doc: Resume;
     ids: string[];
     label: string;
+    kind?: "agent";
   } | null>(null);
   const [blockMenu, setBlockMenu] = useState<{
     id: string;
@@ -1259,6 +1277,10 @@ export default function Studio() {
     el.addEventListener("pointercancel", end);
   };
   const cancelPreview = () => {
+    if (agentPreviewApi.current) {
+      agentPreviewApi.current.reject();
+      return;
+    }
     pinnedPreview.current = false;
     setPreview(null);
     previewReveal.current = false;
@@ -1277,6 +1299,10 @@ export default function Studio() {
     ids?: string[],
   ) => {
     if (preview?.key === key || pinnedPreview.current) return;
+    // 别的预览（模板/模块）接管画面时，让助手的接受/不接受按钮失效，避免误报“已放弃”
+    agentPreviewApi.current = null;
+    // 别的预览（模板/模块）接管画面时，让助手的接受/不接受按钮失效，避免误报“已放弃”
+    agentPreviewApi.current = null;
     if (previewScroll.current === null)
       previewScroll.current = workspace.current?.scrollTop ?? 0;
     previewReveal.current = true;
@@ -1333,6 +1359,10 @@ export default function Studio() {
   };
   const confirmPreview = () => {
     if (!preview) return;
+    if (agentPreviewApi.current) {
+      agentPreviewApi.current.accept();
+      return;
+    }
     const next = preview.doc;
     previewScroll.current = null;
     previewReveal.current = false;
@@ -1817,11 +1847,18 @@ export default function Studio() {
           {preview && (
             <div className="preview-banner" role="status">
               <span>
-                <b>插入预览</b> {preview.label}
-                。单击固定预览，双击卡片直接加入。
+                <b>{preview.kind === "agent" ? "排版预览" : "插入预览"}</b>{" "}
+                {preview.label}
+                {preview.kind === "agent"
+                  ? "。这是助手改完的效果，确认后才写进简历。"
+                  : "。单击固定预览，双击卡片直接加入。"}
               </span>
-              <button onClick={confirmPreview}>确认应用</button>
-              <button onClick={cancelPreview}>取消</button>
+              <button onClick={confirmPreview}>
+                {preview.kind === "agent" ? "接受" : "确认应用"}
+              </button>
+              <button onClick={cancelPreview}>
+                {preview.kind === "agent" ? "不接受" : "取消"}
+              </button>
             </div>
           )}
           <div
@@ -2270,7 +2307,29 @@ export default function Studio() {
           pageCount={pages.length}
           measurePages={measurePages}
           onApply={(next) => historyUpdate(next)}
-          onClose={() => setAgentOpen(false)}
+          onPreview={(next) => {
+            pinnedPreview.current = false;
+            previewScroll.current = workspace.current?.scrollTop ?? 0;
+            previewReveal.current = false;
+            setPreview({
+              key: "agent",
+              doc: next,
+              ids: [],
+              label: "排版助手建议",
+              kind: "agent",
+            });
+          }}
+          onClearPreview={() => {
+            agentPreviewApi.current = null;
+            setPreview(null);
+            previewScroll.current = null;
+          }}
+          registerPreviewApi={registerAgentPreview}
+          onClose={() => {
+            agentPreviewApi.current = null;
+            setPreview(null);
+            setAgentOpen(false);
+          }}
         />
       )}
       <div ref={markWord} className="caret-word" aria-hidden="true" />

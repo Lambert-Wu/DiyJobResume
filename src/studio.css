@@ -1707,6 +1707,15 @@ a {
 .preview-banner span {
   flex: 1;
 }
+/* 助手面板浮在右侧，避免把「接受/不接受」压在下面 */
+.studio:has(.agent-panel) .preview-banner {
+  padding-right: 404px;
+}
+@media (max-width: 1100px) {
+  .studio:has(.agent-panel) .preview-banner {
+    padding-right: 16px;
+  }
+}
 .preview-banner button {
   background: white;
   padding: 4px 8px;

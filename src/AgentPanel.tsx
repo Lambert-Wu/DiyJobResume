@@ -64,12 +64,20 @@ export function AgentPanel({
   pageCount,
   measurePages,
   onApply,
+  onPreview,
+  onClearPreview,
+  registerPreviewApi,
   onClose,
 }: {
   doc: Resume;
   pageCount: number;
   measurePages: (doc: Resume) => number;
   onApply: (next: Resume) => void;
+  onPreview: (next: Resume) => void;
+  onClearPreview: () => void;
+  registerPreviewApi: (
+    api: { accept: () => void; reject: () => void } | null,
+  ) => void;
   onClose: () => void;
 }) {
   const [config, setConfig] = useState(loadAgentConfig),
@@ -182,6 +190,7 @@ export function AgentPanel({
     setBusy(true);
     setError("");
     setPending(null);
+    onClearPreview();
     const system =
       AGENT_SYSTEM_PROMPT +
       "\n\n当前简历排版参数：\n" +
@@ -210,6 +219,7 @@ export function AgentPanel({
           skipped: applied.skipped,
           actions: reply.actions,
         });
+        onPreview(applied.doc);
       }
     } catch (e) {
       setError(errorText(e));
@@ -230,6 +240,7 @@ export function AgentPanel({
     setBusy(true);
     setError("");
     setPending(null);
+    onClearPreview();
     setTurns((all) => [...all, { role: "user", text: "帮我把简历压到一页" }]);
     const before = measurePages(doc);
     let current = doc,
@@ -279,6 +290,7 @@ export function AgentPanel({
         notes: [`页数：${before} 页 → ${after} 页`, ...notes],
         skipped,
       });
+      onPreview(current);
       setTurns((all) => [
         ...all,
         {
@@ -296,19 +308,44 @@ export function AgentPanel({
     }
   };
 
-  const apply = () => {
+  const accept = () => {
     if (!pending) return;
     // 有原始动作就按当前文档重算，避免中途改过内容被旧快照覆盖
     const next = pending.actions
       ? applyAgentActions(doc, pending.actions).doc
       : pending.result;
     onApply(next);
+    onClearPreview();
+    registerPreviewApi(null);
     setTurns((all) => [
       ...all,
-      { role: "assistant", text: "已应用到简历，按 Ctrl+Z 可以撤销。" },
+      { role: "assistant", text: "已接受并写进简历，按 Ctrl+Z 可以撤销。" },
     ]);
     setPending(null);
   };
+  const reject = () => {
+    if (!pending) return;
+    onClearPreview();
+    registerPreviewApi(null);
+    setTurns((all) => [
+      ...all,
+      { role: "assistant", text: "已放弃这次改动，简历保持原样。" },
+    ]);
+    setPending(null);
+  };
+
+  const apiRef = useRef({ accept, reject });
+  apiRef.current = { accept, reject };
+  useEffect(() => {
+    registerPreviewApi(
+      pending
+        ? {
+            accept: () => apiRef.current.accept(),
+            reject: () => apiRef.current.reject(),
+          }
+        : null,
+    );
+  }, [pending, registerPreviewApi]);
 
   const clear = () => {
     setTurns([]);
@@ -445,11 +482,12 @@ export function AgentPanel({
                     已跳过：{pending.skipped.join("；")}
                   </p>
                 )}
+                <p className="agent-skip">右侧已经是改完的效果，你看着决定。</p>
                 <div className="agent-plan-actions">
-                  <button className="primary" onClick={apply}>
-                    应用到简历
+                  <button className="primary" onClick={accept}>
+                    接受
                   </button>
-                  <button onClick={() => setPending(null)}>放弃</button>
+                  <button onClick={reject}>不接受</button>
                 </div>
               </>
             ) : (
