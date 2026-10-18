@@ -35,8 +35,6 @@ const EXAMPLES = [
   "把专业技能排到最前面",
   "行距松一点，看着更透气",
 ];
-const AI_REVIEW_KEY = "diyjobresume.agent.review.v1";
-
 function loadTurns(docId: string): AgentTurn[] {
   try {
     const raw = localStorage.getItem(turnsKey(docId));
@@ -103,10 +101,7 @@ export function AgentPanel({
     [tab, setTab] = useState<"chat" | "paste">("chat"),
     [pasteText, setPasteText] = useState(""),
     [running, setRunning] = useState(false),
-    [aiReview, setAiReview] = useState(
-      () => localStorage.getItem(AI_REVIEW_KEY) !== "0",
-    ),
-    [progress, setProgress] = useState<string[]>([]),
+    [percent, setPercent] = useState(0),
     [layoutResult, setLayoutResult] = useState<{
       before: Resume;
       after: Resume;
@@ -346,77 +341,56 @@ export function AgentPanel({
     const text = pasteText.trim();
     if (!text || running) return;
     setError("");
+    setLayoutResult(null);
     setRunning(true);
-    setProgress([]);
+    setPercent(6);
     const before = doc;
     try {
-      let index = 0,
-        last = doc;
-      for (const stage of layoutSteps(text)) {
-        // 每步都留出时间让人看清，别一闪而过
-        await wait(index++ ? 420 : 200);
-        setProgress((all) => [...all, stage.label]);
-        last = { ...doc, lines: stage.lines };
+      const stages = Array.from(layoutSteps(text));
+      let last = doc;
+      for (let index = 0; index < stages.length; index++) {
+        await wait(260);
+        last = { ...doc, lines: stages[index].lines };
+        // 本地几步走到 66%，剩下的留给 AI 复核
+        setPercent(8 + Math.round(((index + 1) / stages.length) * 58));
       }
-      if (aiReview && config.apiKey.trim() && config.model.trim()) {
-        const pendingLabel = "AI 复核格式…";
-        setProgress((all) => [...all, pendingLabel]);
-        const draft = last,
-          controller = new AbortController(),
-          timer = window.setTimeout(() => controller.abort(), 60000);
+
+      if (config.apiKey.trim() && config.model.trim()) {
+        setPercent(70);
+        const controller = new AbortController(),
+          timeout = window.setTimeout(() => controller.abort(), 60000),
+          // 等接口的时候让进度慢慢爬，不要卡死在 70%
+          ticker = window.setInterval(
+            () => setPercent((value) => (value < 92 ? value + 1 : value)),
+            320,
+          );
         try {
           // 和对话里「帮我把格式调好」完全同一套动作：排版和文字都能改
           const reply = await reviewLayout(
             config,
-            draft,
+            last,
             text,
             controller.signal,
           );
           const actions = reply.actions.filter((action) =>
             isReviewAction(String(action.type)),
           );
-          const applied = actions.length
-            ? applyAgentActions(draft, actions)
-            : null;
-          if (applied?.notes.length) {
-            last = applied.doc;
-            const removed = actions.filter(
-                (action) => String(action.type) === "remove",
-              ).length,
-              rebuilt = actions.some(
-                (action) => String(action.type) === "setContent",
-              );
-            setProgress((all) => [
-              ...all.filter((step) => step !== pendingLabel),
-              `AI 复核完成（${
-                rebuilt ? "整篇重排" : `调整 ${applied.notes.length} 项`
-              }${rebuilt ? `，${last.lines.length} 行` : ""}${
-                removed ? `，删除 ${removed} 行` : ""
-              }）`,
-            ]);
-          } else if (actions.length) {
-            setProgress((all) => [
-              ...all.filter((step) => step !== pendingLabel),
-              "AI 复核给的动作都没能执行，沿用本地排版",
-            ]);
-          } else {
-            setProgress((all) => [
-              ...all.filter((step) => step !== pendingLabel),
-              "AI 复核没有给出可用的调整，沿用本地排版",
-            ]);
+          if (actions.length) {
+            const applied = applyAgentActions(last, actions);
+            if (applied.notes.length) last = applied.doc;
           }
         } catch {
-          setProgress((all) => [
-            ...all.filter((step) => step !== pendingLabel),
-            "AI 复核没成功，沿用本地排版",
-          ]);
+          /* 复核失败就用本地结果 */
         } finally {
-          window.clearTimeout(timer);
+          window.clearInterval(ticker);
+          window.clearTimeout(timeout);
         }
       }
-      await wait(320);
+
+      setPercent(96);
+      await wait(220);
       onApply(last);
-      setProgress((all) => [...all, `排版完成（${last.lines.length} 行）`]);
+      setPercent(100);
       setLayoutResult({ before, after: last, total: last.lines.length });
     } catch (e) {
       setError(errorText(e));
@@ -574,21 +548,6 @@ export function AgentPanel({
       ) : (
         <div className="agent-paste">
           <p className="agent-paste-hint">将简历文字内容粘贴即可一键排版</p>
-          <label
-            className="agent-paste-toggle"
-            title="初版排好后，再让模型检查一遍结构（只许调整行类型和拆分，不许改字）。需要先配置接口。"
-          >
-            <input
-              type="checkbox"
-              checked={aiReview}
-              disabled={running}
-              onChange={(e) => {
-                setAiReview(e.target.checked);
-                localStorage.setItem(AI_REVIEW_KEY, e.target.checked ? "1" : "0");
-              }}
-            />
-            AI 复核格式（会发送简历正文）
-          </label>
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
@@ -614,13 +573,19 @@ export function AgentPanel({
               {running ? "排版中…" : "开始排版"}
             </button>
           </div>
-          {!!progress.length && (
-            <ol className="agent-steps">
-              {progress.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-              {running && <li className="agent-steps-active">正在处理…</li>}
-            </ol>
+          {running && (
+            <div
+              className="agent-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent}
+            >
+              <span className="agent-progress-track">
+                <i style={{ width: `${percent}%` }} />
+              </span>
+              <span className="agent-progress-text">正在排版… {percent}%</span>
+            </div>
           )}
           {layoutResult && !running && (
             <div className="agent-done">

@@ -2797,24 +2797,32 @@ a {
   flex: none;
 }
 
-/* 一键排版：过程步骤 + 完成后的撤销 */
-.agent-steps {
-  margin: 2px 0 0;
-  padding-left: 20px;
-  font-size: 11px;
-  line-height: 1.8;
-  color: #6f6459;
+/* 一键排版：进度条 + 完成后的撤销 */
+.agent-progress {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
 }
-.agent-steps li::marker {
-  color: #b87559;
+.agent-progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: #f0eae3;
+  overflow: hidden;
 }
-.agent-steps-active {
-  color: #9b9187;
-  list-style: none;
-  margin-left: -14px;
+.agent-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #b87559;
+  transition: width 0.28s ease;
+}
+.agent-progress-text {
+  font-size: 11px;
+  color: #8b8177;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .agent-done {
   display: flex;
@@ -2842,19 +2850,3 @@ a {
   background: #fdf6f0;
 }
 
-.agent-paste-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #7a6f65;
-  cursor: pointer;
-  user-select: none;
-}
-.agent-paste-toggle input {
-  width: 13px;
-  height: 13px;
-}
-.agent-paste-toggle:has(input:disabled) {
-  opacity: 0.55;
-}
