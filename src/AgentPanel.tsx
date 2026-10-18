@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Bot,
   Eraser,
-  Minimize2,
   Send,
   Settings2,
   Sparkles,
@@ -63,7 +62,6 @@ function errorText(e: unknown) {
 export function AgentPanel({
   doc,
   pageCount,
-  measurePages,
   docked = false,
   onApply,
   onPreview,
@@ -73,7 +71,6 @@ export function AgentPanel({
 }: {
   doc: Resume;
   pageCount: number;
-  measurePages: (doc: Resume) => number;
   docked?: boolean;
   onApply: (next: Resume) => void;
   onPreview: (next: Resume) => void;
@@ -90,10 +87,9 @@ export function AgentPanel({
     [input, setInput] = useState(""),
     [turns, setTurns] = useState<AgentTurn[]>(loadTurns),
     [pending, setPending] = useState<{
-      result: Resume;
+      actions: AgentAction[];
       notes: string[];
       skipped: string[];
-      actions?: AgentAction[];
     } | null>(null),
     [busy, setBusy] = useState(false),
     [testing, setTesting] = useState(false),
@@ -231,10 +227,9 @@ export function AgentPanel({
       if (reply.actions.length) {
         const applied = applyAgentActions(doc, reply.actions);
         setPending({
-          result: applied.doc,
+          actions: reply.actions,
           notes: applied.notes,
           skipped: applied.skipped,
-          actions: reply.actions,
         });
         if (applied.notes.length) onPreview(applied.doc);
       }
@@ -246,80 +241,10 @@ export function AgentPanel({
     }
   };
 
-  // 自己量页数，不够就再压一轮，最多三轮
-  const fitOnePage = async () => {
-    if (busy) return;
-    if (!config.apiKey.trim() || !config.model.trim()) {
-      setSetupOpen(true);
-      setError("先填好接口地址、模型名和 Key，再点保存。");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    setPending(null);
-    onClearPreview();
-    setTurns((all) => [...all, { role: "user", text: "帮我把简历压到一页" }]);
-    const before = measurePages(doc);
-    let current = doc,
-      round = 0,
-      pages = before;
-    const notes: string[] = [],
-      skipped: string[] = [];
-    try {
-      while (pages > 1 && round < 3) {
-        round++;
-        const system =
-          AGENT_SYSTEM_PROMPT +
-          `\n\n当前简历排版参数：\n${describeDoc(current, pages)}` +
-          `\n\n任务：这份简历现在排成 ${pages} 页，请给出让页数更接近 1 页的排版动作（优先 compact、缩小字号、收紧段距、减小页边距），不要改文字。`;
-        const reply = await askModel(
-          system,
-          [],
-          `第 ${round} 轮：继续压缩到 1 页。`,
-          AbortSignal.timeout(90000),
-        );
-        const applied = applyAgentActions(current, reply.actions);
-        if (!applied.notes.length) {
-          skipped.push(...applied.skipped);
-          break;
-        }
-        current = applied.doc;
-        notes.push(...applied.notes.map((note) => `第 ${round} 轮：${note}`));
-        skipped.push(...applied.skipped);
-        pages = measurePages(current);
-      }
-      const after = measurePages(current);
-      if (!notes.length) return;
-      setPending({
-        result: current,
-        notes: [`页数：${before} 页 → ${after} 页`, ...notes],
-        skipped,
-      });
-      onPreview(current);
-      setTurns((all) => [
-        ...all,
-        {
-          role: "assistant",
-          text:
-            after <= 1
-              ? `已压到 1 页（${round} 轮）`
-              : `压到 ${after} 页，仍超过一页`,
-        },
-      ]);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const accept = () => {
     if (!pending) return;
-    // 有原始动作就按当前文档重算，避免中途改过内容被旧快照覆盖
-    const next = pending.actions
-      ? applyAgentActions(doc, pending.actions).doc
-      : pending.result;
-    onApply(next);
+    // 按当前文档重算，避免中途改过内容被旧快照覆盖
+    onApply(applyAgentActions(doc, pending.actions).doc);
     onClearPreview();
     registerPreviewApi(null);
     setPending(null);
@@ -480,6 +405,14 @@ export function AgentPanel({
                     <li key={note}>{note}</li>
                   ))}
                 </ul>
+                {pending.actions.filter((a) => a.type === "remove").length >
+                  0 && (
+                  <p className="agent-warn">
+                    注意：这次会删掉{" "}
+                    {pending.actions.filter((a) => a.type === "remove").length}{" "}
+                    行内容，看清楚再接受。
+                  </p>
+                )}
                 {pending.skipped.length > 0 && (
                   <p className="agent-skip">
                     已跳过：{pending.skipped.join("；")}
@@ -501,19 +434,6 @@ export function AgentPanel({
           </div>
         )}
       </div>
-
-      {pageCount > 1 && (
-        <div className="agent-quick">
-          <button
-            disabled={busy}
-            onClick={() => void fitOnePage()}
-            title="自动测量页数，一轮不够就继续压，最多三轮"
-          >
-            <Minimize2 size={13} />
-            压到一页
-          </button>
-        </div>
-      )}
 
       <form
         className="agent-input"

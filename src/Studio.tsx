@@ -677,30 +677,6 @@ export default function Studio() {
       host.replaceChildren(measureNode.current);
     return measureNode.current;
   };
-  // 给排版助手用：同步算一份文档会排成几页（不改状态）
-  const measurePages = (target: Resume) => {
-    const node = measureHost();
-    if (!node) return pages.length;
-    const contact = target.lines.find(
-      (line, index) =>
-        line.kind === "text" && target.lines[index - 1]?.kind === "name",
-    )?.id;
-    const measure = (line: Line, text: string, continued: boolean) =>
-      measureRow(
-        node,
-        target.settings,
-        target.template,
-        line.id === contact,
-        line,
-        text,
-        continued,
-      );
-    return paginate(
-      target.lines,
-      PAGE.height - target.settings.top - target.settings.bottom,
-      measure,
-    ).length;
-  };
   useLayoutEffect(() => {
     const node = measureHost();
     if (!node) return;
@@ -2072,7 +2048,6 @@ export default function Studio() {
               docked
               doc={doc}
               pageCount={pages.length}
-              measurePages={measurePages}
               onApply={(next) => historyUpdate(next)}
               onPreview={(next) => {
                 pinnedPreview.current = false;
