@@ -381,11 +381,16 @@ export function AgentPanel({
           if (applied?.notes.length) {
             last = applied.doc;
             const removed = actions.filter(
-              (action) => String(action.type) === "remove",
-            ).length;
+                (action) => String(action.type) === "remove",
+              ).length,
+              rebuilt = actions.some(
+                (action) => String(action.type) === "setContent",
+              );
             setProgress((all) => [
               ...all.filter((step) => step !== pendingLabel),
-              `AI 复核完成（调整 ${applied.notes.length} 项${
+              `AI 复核完成（${
+                rebuilt ? "整篇重排" : `调整 ${applied.notes.length} 项`
+              }${rebuilt ? `，${last.lines.length} 行` : ""}${
                 removed ? `，删除 ${removed} 行` : ""
               }）`,
             ]);

@@ -214,12 +214,12 @@ describe("AI layout review", () => {
     expect(calls[0].body.messages[0].content).toContain("教育背景");
     expect(calls[0].body.messages[1].content).toContain("原始简历");
     expect(reply.actions[0]).toMatchObject({ type: "setKind", line: 5 });
-    // 复核和对话同权：结构、文字都能改；整篇重写的 setContent 仍不允许
+    // 复核和对话同权：结构、文字、整篇重排都能做
     expect(isReviewAction("setKind")).toBe(true);
     expect(isReviewAction("removeEmptyLines")).toBe(true);
     expect(isReviewAction("setText")).toBe(true);
     expect(isReviewAction("remove")).toBe(true);
-    expect(isReviewAction("setContent")).toBe(false);
+    expect(isReviewAction("setContent")).toBe(true);
     vi.unstubAllGlobals();
   });
 });

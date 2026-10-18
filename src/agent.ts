@@ -226,6 +226,8 @@ export const AGENT_REVIEW_PROMPT = `你现在的任务是给一份「已经初�
 - 板块顺序：moveSection
 - 整体版式：template、font、fontSize、lineHeight、spacing、margins、accent、headerAlign、compact
 - 清理空行：removeEmptyLines
+- 整篇重排：setContent（局部改动理不顺时，用它一次性重写整篇结构；
+  必须保留原文全部信息，不许丢句、丢要点、编造内容）
 
 文字以「不改」为默认；用户在对话里明确要求改写、精简、补写时才可以动字，
 动字必须保持原意、不许编造公司/学校/时间/数字，并且只能在确实需要时小范围修改。
@@ -243,6 +245,7 @@ const REVIEW_ACTIONS = new Set([
   "insert",
   "remove",
   "replace",
+  "setContent",
   "moveSection",
   "template",
   "font",
