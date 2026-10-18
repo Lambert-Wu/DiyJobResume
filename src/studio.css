@@ -2640,3 +2640,159 @@ a {
 .doc-switch {
   z-index: auto;
 }
+
+/* 助手：对话 / 整段粘贴 两个功能分开 */
+.agent-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid #eee7dd;
+  background: #fbf9f6;
+}
+.agent-tabs button {
+  border: 0;
+  background: transparent;
+  padding: 5px 10px 7px;
+  font-size: 12px;
+  color: #8b8177;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+}
+.agent-tabs button:hover {
+  color: #6d4938;
+}
+.agent-tabs button.active {
+  color: #8a4e33;
+  border-bottom-color: #b87559;
+  font-weight: 500;
+  background: #fff;
+}
+.agent-paste {
+  flex: 1;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+.agent-paste-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.65;
+  color: #8b8177;
+}
+.agent-paste textarea {
+  flex: 1;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #ded7cc;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  font-family: inherit;
+  background: #fff;
+  color: #33312e;
+}
+.agent-paste-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.agent-paste-count {
+  font-size: 11px;
+  color: #9b9187;
+}
+.agent-paste-actions button {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+/* 改动清单现在挂在标签页内容下方，两种模式都能看到 */
+.agent-plan {
+  flex: none;
+  margin: 0 10px 8px;
+  max-height: 44%;
+  overflow: auto;
+}
+
+/* 助手：对话 / 整段粘贴 两个功能分开 */
+.agent-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid #eee7dd;
+  background: #fbf9f6;
+}
+.agent-tabs button {
+  border: 0;
+  background: transparent;
+  padding: 5px 10px 7px;
+  font-size: 12px;
+  color: #8b8177;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+}
+.agent-tabs button:hover {
+  color: #6d4938;
+}
+.agent-tabs button.active {
+  color: #8a4e33;
+  border-bottom-color: #b87559;
+  font-weight: 500;
+  background: #fff;
+}
+.agent-paste {
+  flex: 1;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+.agent-paste-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.65;
+  color: #8b8177;
+}
+.agent-paste textarea {
+  flex: 1;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #ded7cc;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  font-family: inherit;
+  background: #fff;
+  color: #33312e;
+}
+.agent-paste-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.agent-paste-count {
+  font-size: 11px;
+  color: #9b9187;
+}
+.agent-paste-actions button {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+/* 改动清单现在挂在标签页内容下方，两种模式都能看到 */
+.agent-plan {
+  flex: none;
+  margin: 0 10px 8px;
+  max-height: 44%;
+  overflow: auto;
+}
+.agent-error-outside {
+  margin: 0 10px 8px;
+  flex: none;
+}

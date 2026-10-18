@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   AlertTriangle,
@@ -23,7 +23,7 @@ import {
   saveAgentConfig,
 } from "./agent";
 import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
-import { looksLikeResumeBlock } from "./importText";
+import { contentToLines } from "./importText";
 import type { Resume } from "./flow";
 
 const EXAMPLES = [
@@ -95,6 +95,8 @@ export function AgentPanel({
     [setupOpen, setSetupOpen] = useState(() => !loadAgentConfig().apiKey),
     [agreed, setAgreed] = useState(noticeAccepted),
     [input, setInput] = useState(""),
+    [tab, setTab] = useState<"chat" | "paste">("chat"),
+    [pasteText, setPasteText] = useState(""),
     [turns, setTurns] = useState<AgentTurn[]>(() => loadTurns(docId)),
     [pending, setPending] = useState<{
       actions: AgentAction[];
@@ -212,30 +214,6 @@ export function AgentPanel({
     const text = input.trim();
     if (!text || busy) return;
     if (!config.apiKey.trim() || !config.model.trim()) {
-      // 没配接口也别让整段粘贴白费：这份明显是简历时，本地先排一版给用户看
-      if (looksLikeResumeBlock(text)) {
-        setInput("");
-        setTurns((all) => [
-          ...all,
-          { role: "user", text },
-          {
-            role: "assistant",
-            text: "还没配置接口，我先用本地规则排了一版，你看看合不合适。",
-          },
-        ]);
-        const actions = [{ type: "setContent", text }],
-          applied = applyAgentActions(doc, actions);
-        if (applied.notes.length) {
-          setPending({
-            actions,
-            notes: applied.notes,
-            skipped: applied.skipped,
-            turnAt: turns.length + 1,
-          });
-          onPreview(applied.doc);
-        }
-        return;
-      }
       setSetupOpen(true);
       setError("先填好接口地址、模型名和 Key，再点保存。");
       return;
@@ -278,19 +256,6 @@ export function AgentPanel({
           turnAt: assistantAt,
         });
         if (applied.notes.length) onPreview(applied.doc);
-      } else if (looksLikeResumeBlock(text)) {
-        // 模型没给方案，但这段明显是整份简历 → 本地按规则先排出来给用户看
-        const actions = [{ type: "setContent", text }],
-          applied = applyAgentActions(doc, actions);
-        if (applied.notes.length) {
-          setPending({
-            actions,
-            notes: [...applied.notes, "助手没给方案，已用本地规则直接排版"],
-            skipped: applied.skipped,
-            turnAt: assistantAt,
-          });
-          onPreview(applied.doc);
-        }
       }
     } catch (e) {
       setError(errorText(e));
@@ -300,18 +265,22 @@ export function AgentPanel({
     }
   };
 
-  const markApplied = (at: number, notes: string[]) =>
+  const markApplied = (at: number, notes: string[]) => {
+    if (at < 0) return;
     setTurns((all) =>
       all.map((turn, index) =>
         index === at ? { ...turn, notes, rejected: undefined } : turn,
       ),
     );
-  const markRejected = (at: number) =>
+  };
+  const markRejected = (at: number) => {
+    if (at < 0) return;
     setTurns((all) =>
       all.map((turn, index) =>
         index === at ? { ...turn, rejected: true, notes: undefined } : turn,
       ),
     );
+  };
 
   const accept = () => {
     if (!pending) return;
@@ -343,6 +312,40 @@ export function AgentPanel({
         : null,
     );
   }, [pending, registerPreviewApi]);
+
+  const pasteInfo = useMemo(() => {
+    if (!pasteText.trim()) return { count: 0, error: "" };
+    try {
+      return { count: contentToLines(pasteText).length, error: "" };
+    } catch (e) {
+      return {
+        count: 0,
+        error: e instanceof Error ? e.message : "这段内容读不出来",
+      };
+    }
+  }, [pasteText]);
+  const buildPaste = () => {
+    const text = pasteText.trim();
+    if (!text) return;
+    setError("");
+    const actions = [{ type: "setContent", text }];
+    try {
+      const applied = applyAgentActions(doc, actions);
+      if (!applied.notes.length) {
+        setError(applied.skipped.join("；") || "没读出内容，检查一下文字格式？");
+        return;
+      }
+      setPending({
+        actions,
+        notes: applied.notes,
+        skipped: applied.skipped,
+        turnAt: -1,
+      });
+      onPreview(applied.doc);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
 
   const clear = () => {
     setTurns([]);
@@ -438,108 +441,165 @@ export function AgentPanel({
         </section>
       )}
 
-      <div className="agent-log" ref={logRef}>
-        {!turns.length && (
-          <div className="agent-empty">
-            <Bot size={18} />
-            <p>
-              用一句话说清楚你想怎么排，我会先给出改动清单，你确认后才生效。
-            </p>
-            <div className="agent-chips">
-              {EXAMPLES.map((example) => (
-                <button key={example} onClick={() => setInput(example)}>
-                  {example}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {turns.map((turn, index) => (
-          <div key={index} className={`agent-msg ${turn.role}`}>
-            {turn.text}
-          </div>
-        ))}
-        {busy && (
-          <div className="agent-msg assistant agent-thinking">
-            正在生成排版方案…
-          </div>
-        )}
-        {error && (
-          <div className="agent-error">
-            <AlertTriangle size={14} />
-            <span>{error}</span>
-          </div>
-        )}
-        {pending && (
-          <div className="agent-plan">
-            {pending.notes.length ? (
-              <>
-                <strong>将要改动 {pending.notes.length} 项</strong>
-                <ul>
-                  {pending.notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-                {pending.actions.filter((a) => a.type === "remove").length >
-                  0 && (
-                  <p className="agent-warn">
-                    注意：这次会删掉{" "}
-                    {pending.actions.filter((a) => a.type === "remove").length}{" "}
-                    行内容，看清楚再接受。
-                  </p>
-                )}
-                {pending.actions.some((a) => a.type === "setContent") && (
-                  <p className="agent-warn">
-                    注意：这次会整篇替换内容，原来的文字会全部换掉（接受后仍可按
-                    Ctrl+Z 撤销）。
-                  </p>
-                )}
-                {pending.skipped.length > 0 && (
-                  <p className="agent-skip">
-                    已跳过：{pending.skipped.join("；")}
-                  </p>
-                )}
-                <div className="agent-plan-actions">
-                  <button className="primary" onClick={accept}>
-                    接受
-                  </button>
-                  <button onClick={reject}>不接受</button>
-                </div>
-              </>
-            ) : (
-              <p className="agent-skip">
-                这次没有可执行的排版改动
-                {pending.skipped.length ? "：" + pending.skipped.join("；") : "。"}
-              </p>
-            )}
-          </div>
-        )}
+      <div className="agent-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === "chat"}
+          className={tab === "chat" ? "active" : ""}
+          onClick={() => setTab("chat")}
+        >
+          对话
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "paste"}
+          className={tab === "paste" ? "active" : ""}
+          onClick={() => setTab("paste")}
+        >
+          一键排版
+        </button>
       </div>
 
-      <form
-        className="agent-input"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-      >
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
+      {tab === "chat" ? (
+        <div className="agent-log" ref={logRef}>
+          {!turns.length && (
+            <div className="agent-empty">
+              <Bot size={18} />
+              <p>
+                用一句话说清楚你想怎么排，我会先给出改动清单，你确认后才生效。
+              </p>
+              <div className="agent-chips">
+                {EXAMPLES.map((example) => (
+                  <button key={example} onClick={() => setInput(example)}>
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {turns.map((turn, index) => (
+            <div key={index} className={`agent-msg ${turn.role}`}>
+              {turn.text}
+            </div>
+          ))}
+          {busy && (
+            <div className="agent-msg assistant agent-thinking">
+              正在生成排版方案…
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="agent-paste">
+          <p className="agent-paste-hint">将简历文字内容粘贴即可一键排版</p>
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            spellCheck={false}
+            aria-label="粘贴整份简历"
+          />
+          <div className="agent-paste-actions">
+            <span className="agent-paste-count">
+              {pasteInfo.error
+                ? pasteInfo.error
+                : pasteInfo.count
+                  ? `识别到 ${pasteInfo.count} 行`
+                  : pasteText.trim()
+                    ? "还没识别出内容"
+                    : "等待粘贴"}
+            </span>
+            <button
+              className="primary"
+              disabled={!pasteInfo.count}
+              onClick={buildPaste}
+            >
+              生成排版预览
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="agent-error agent-error-outside">
+          <AlertTriangle size={14} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {pending && (
+        <div className="agent-plan">
+          {pending.notes.length ? (
+            <>
+              <strong>将要改动 {pending.notes.length} 项</strong>
+              <ul>
+                {pending.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+              {pending.actions.filter((a) => a.type === "remove").length >
+                0 && (
+                <p className="agent-warn">
+                  注意：这次会删掉{" "}
+                  {pending.actions.filter((a) => a.type === "remove").length}{" "}
+                  行内容，看清楚再接受。
+                </p>
+              )}
+              {pending.actions.some((a) => a.type === "setContent") && (
+                <p className="agent-warn">
+                  注意：这次会整篇替换内容，原来的文字会全部换掉（接受后仍可按
+                  Ctrl+Z 撤销）。
+                </p>
+              )}
+              {pending.skipped.length > 0 && (
+                <p className="agent-skip">
+                  已跳过：{pending.skipped.join("；")}
+                </p>
+              )}
+              <div className="agent-plan-actions">
+                <button className="primary" onClick={accept}>
+                  接受
+                </button>
+                <button onClick={reject}>不接受</button>
+              </div>
+            </>
+          ) : (
+            <p className="agent-skip">
+              这次没有可执行的排版改动
+              {pending.skipped.length ? "：" + pending.skipped.join("；") : "。"}
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "chat" && (
+        <form
+          className="agent-input"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
           }}
-          placeholder="例如：内容太挤了，帮我排得清爽一点；也可以直接把整段简历粘进来让它排版"
-          rows={Math.min(8, Math.max(2, input.split("\n").length))}
-          aria-label="告诉助手你想怎么排"
-        />
-        <button type="submit" disabled={busy || !input.trim()} aria-label="发送">
-          <Send size={15} />
-        </button>
-      </form>
+        >
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            placeholder="例如：内容太挤了，帮我排得清爽一点"
+            rows={Math.min(6, Math.max(2, input.split("\n").length))}
+            aria-label="告诉助手你想怎么排"
+          />
+          <button type="submit" disabled={busy || !input.trim()} aria-label="发送">
+            <Send size={15} />
+          </button>
+        </form>
+      )}
     </div>
   );
 }
