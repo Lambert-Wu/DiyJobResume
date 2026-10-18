@@ -2841,3 +2841,20 @@ a {
   border-color: #b87559;
   background: #fdf6f0;
 }
+
+.agent-paste-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #7a6f65;
+  cursor: pointer;
+  user-select: none;
+}
+.agent-paste-toggle input {
+  width: 13px;
+  height: 13px;
+}
+.agent-paste-toggle:has(input:disabled) {
+  opacity: 0.55;
+}

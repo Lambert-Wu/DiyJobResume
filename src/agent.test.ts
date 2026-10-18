@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AGENT_CONTENT_PROMPT,
   AGENT_SYSTEM_PROMPT,
@@ -7,6 +7,8 @@ import {
   changesDigest,
   describeDoc,
   parseAgentReply,
+  reviewLayout,
+  stripStructure,
 } from "./agent";
 import { initialResume, parseMarkdown, toMarkdown } from "./flow";
 
@@ -169,6 +171,39 @@ describe("agent whole-document action", () => {
     const next = applyAgentActions(before, [{ type: "setContent", text: "  " }]);
     expect(next.doc).toBe(before);
     expect(next.skipped).toHaveLength(1);
+  });
+});
+
+describe("AI layout review", () => {
+  it("compares content while ignoring structure marks", () => {
+    const draft = "# 李景阳\n电话：138 | 邮箱：a@b.com\n## 教育背景\n### 某大学 | 本科 | 2020 – 2024\n- 课程";
+    const reviewed =
+      "李景阳\n电话：138 | 邮箱：a@b.com\n教育背景\n某大学 | 本科 | 2020 – 2024\n课程";
+    expect(stripStructure(reviewed)).toBe(stripStructure(draft));
+    expect(stripStructure(draft + "多写的字")).not.toBe(stripStructure(draft));
+  });
+
+  it("asks the model to restructure only and returns its markdown", async () => {
+    const calls: { url: string; body: any }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: any) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: "```markdown\n# 李景阳\n- 一条\n```" } }],
+        }),
+      } as unknown as Response;
+    });
+    const text = await reviewLayout(
+      { baseUrl: "https://api.example.com/v1/", model: "m", apiKey: "k" },
+      "原始文字",
+      "# 李景阳\n- 一条",
+    );
+    expect(calls[0].url).toBe("https://api.example.com/v1/chat/completions");
+    expect(calls[0].body.messages[0].content).toContain("绝不改动文字");
+    expect(calls[0].body.messages[1].content).toContain("原始粘贴内容");
+    expect(text).toBe("# 李景阳\n- 一条");
+    vi.unstubAllGlobals();
   });
 });
 

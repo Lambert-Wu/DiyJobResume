@@ -149,13 +149,23 @@ function toLines(rows: string[]): Line[] {
       continue;
     }
 
-    // 经历行：「► 标题  角色  时间」或「学校  专业  学历  时间」
-    if (ENTRY_MARK.test(row) || DATE.test(row)) {
+    // 带「►」的行不一定是经历行：有日期或两段以上才当经历，
+    // 否则它只是用符号代替圆点的要点（很多 Word 稿子就是 ▶ 当项目符号）
+    if (ENTRY_MARK.test(row)) {
       const body = row.replace(ENTRY_MARK, "").trim();
       if (body) {
-        lines.push(line("entry", entryText(body)));
+        const isEntry = DATE.test(body) || cellsOf(body).length >= 2;
+        lines.push(
+          isEntry ? line("entry", entryText(body)) : line("bullet", body),
+        );
         continue;
       }
+    }
+
+    // 其余带日期的行：学校 / 公司那一行
+    if (DATE.test(row)) {
+      lines.push(line("entry", entryText(row)));
+      continue;
     }
 
     lines.push(line("text", row));

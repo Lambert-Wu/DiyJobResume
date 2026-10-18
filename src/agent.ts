@@ -220,6 +220,73 @@ export function changesDigest(turns: AgentTurn[]) {
   return out;
 }
 
+export const AGENT_REVIEW_PROMPT = `你是简历结构校对员。用户会给你两段内容：原始粘贴文字、初版解析（markdown）。
+你只调整「结构」，绝不改动文字：可以改行类型、拆分过长的行、合并被误拆的行、调整顺序，
+但不能增删任何文字、不能改写措辞、不能润色、不能补写。
+
+输出格式（只输出 markdown 正文，不要解释、不要代码块）：
+- 第一行：# 姓名
+- 联系方式：保持一行普通文字
+- 板块标题：## 板块名
+- 经历行：### 左侧 | 中间 | 右侧（公司/学校 | 职位/专业 | 时间）
+- 条目：- 内容
+- 其余：普通一行
+
+重点检查：该是条目的行有没有 "- "、该是经历行的有没有拆成三栏、
+有没有把两条要点粘成一行、有没有把一条要点拆成多行。`;
+
+// 校验 AI 复核有没有偷偷改字：只比较正文内容，忽略空白和结构符号
+export function stripStructure(markdown: string) {
+  return markdown
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/^\s*\d+[.)]\s+/gm, "")
+    .replace(/[\s|｜·•]/g, "");
+}
+
+// 让模型只重排结构、不动文字；结果由调用方用 stripStructure 校验后才采用
+export async function reviewLayout(
+  config: AgentConfig,
+  original: string,
+  draft: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const url = config.baseUrl.trim().replace(/\/+$/, "") + "/chat/completions";
+  const res = await fetch(url, {
+    method: "POST",
+    signal,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${config.apiKey.trim()}`,
+    },
+    body: JSON.stringify({
+      model: config.model.trim(),
+      temperature: 0,
+      messages: [
+        { role: "system", content: AGENT_REVIEW_PROMPT },
+        {
+          role: "user",
+          content: `原始粘贴内容：\n<<<\n${original.slice(0, 120000)}\n>>>\n\n初版解析：\n<<<\n${draft.slice(0, 120000)}\n>>>`,
+        },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `复核接口返回 ${res.status}${detail ? "：" + detail.slice(0, 120) : ""}`,
+    );
+  }
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  return (data.choices?.[0]?.message?.content || "")
+    .trim()
+    .replace(/^```(?:markdown|md)?/i, "")
+    .replace(/```$/, "")
+    .trim();
+}
+
 export async function requestAgent(
   config: AgentConfig,
   system: string,

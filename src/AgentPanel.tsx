@@ -16,6 +16,8 @@ import {
   applyAgentActions,
   changesDigest,
   describeDoc,
+  reviewLayout,
+  stripStructure,
   turnsKey,
   loadAgentConfig,
   noticeAccepted,
@@ -23,7 +25,8 @@ import {
   saveAgentConfig,
 } from "./agent";
 import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
-import { layoutSteps, textToLines } from "./importText";
+import { contentToLines, layoutSteps, textToLines } from "./importText";
+import { toMarkdown } from "./flow";
 import type { Resume } from "./flow";
 
 const EXAMPLES = [
@@ -32,6 +35,8 @@ const EXAMPLES = [
   "把专业技能排到最前面",
   "行距松一点，看着更透气",
 ];
+const AI_REVIEW_KEY = "diyjobresume.agent.review.v1";
+
 function loadTurns(docId: string): AgentTurn[] {
   try {
     const raw = localStorage.getItem(turnsKey(docId));
@@ -98,6 +103,9 @@ export function AgentPanel({
     [tab, setTab] = useState<"chat" | "paste">("chat"),
     [pasteText, setPasteText] = useState(""),
     [running, setRunning] = useState(false),
+    [aiReview, setAiReview] = useState(
+      () => localStorage.getItem(AI_REVIEW_KEY) !== "0",
+    ),
     [progress, setProgress] = useState<string[]>([]),
     [layoutResult, setLayoutResult] = useState<{
       before: Resume;
@@ -350,6 +358,41 @@ export function AgentPanel({
         setProgress((all) => [...all, stage.label]);
         last = { ...doc, lines: stage.lines };
       }
+      if (aiReview && config.apiKey.trim() && config.model.trim()) {
+        const pendingLabel = "AI 复核格式…";
+        setProgress((all) => [...all, pendingLabel]);
+        const draft = toMarkdown(last.lines),
+          controller = new AbortController(),
+          timer = window.setTimeout(() => controller.abort(), 60000);
+        try {
+          const checked = await reviewLayout(
+            config,
+            text,
+            draft,
+            controller.signal,
+          );
+          const lines = contentToLines(checked);
+          if (lines.length && stripStructure(checked) === stripStructure(draft)) {
+            last = { ...doc, lines };
+            setProgress((all) => [
+              ...all.filter((step) => step !== pendingLabel),
+              `AI 复核完成（${lines.length} 行）`,
+            ]);
+          } else {
+            setProgress((all) => [
+              ...all.filter((step) => step !== pendingLabel),
+              "AI 复核结果与原文对不上，已忽略，沿用本地排版",
+            ]);
+          }
+        } catch {
+          setProgress((all) => [
+            ...all.filter((step) => step !== pendingLabel),
+            "AI 复核没成功，沿用本地排版",
+          ]);
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
       await wait(320);
       onApply(last);
       setProgress((all) => [...all, `排版完成（${last.lines.length} 行）`]);
@@ -510,6 +553,21 @@ export function AgentPanel({
       ) : (
         <div className="agent-paste">
           <p className="agent-paste-hint">将简历文字内容粘贴即可一键排版</p>
+          <label
+            className="agent-paste-toggle"
+            title="初版排好后，再让模型检查一遍结构（只许调整行类型和拆分，不许改字）。需要先配置接口。"
+          >
+            <input
+              type="checkbox"
+              checked={aiReview}
+              disabled={running}
+              onChange={(e) => {
+                setAiReview(e.target.checked);
+                localStorage.setItem(AI_REVIEW_KEY, e.target.checked ? "1" : "0");
+              }}
+            />
+            AI 复核格式（会发送简历正文）
+          </label>
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
