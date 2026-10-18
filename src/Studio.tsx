@@ -635,8 +635,15 @@ export default function Studio() {
     setSelected(id);
     flashLine(id);
     if (mode === "simple") {
-      const el = editorRef.current?.querySelector(`[data-field="${id}"]`);
-      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const scroller = editorRef.current,
+        row = scroller?.querySelector<HTMLElement>(`[data-field="${id}"]`);
+      if (!scroller || !row) return;
+      const box = scroller.getBoundingClientRect(),
+        at = row.getBoundingClientRect();
+      scroller.scrollTo({
+        top: Math.max(0, scroller.scrollTop + at.top - box.top - 6),
+        behavior: "smooth",
+      });
     } else {
       const index = ref.current.lines.findIndex((l) => l.id === id),
         start =
@@ -648,7 +655,7 @@ export default function Studio() {
           start,
           start + toMarkdown([ref.current.lines[index]]).length,
         );
-        el.scrollTop = Math.max(0, index * 25 - el.clientHeight / 3);
+        el.scrollTop = Math.max(0, index * 25 - 6);
       }
     }
   };
