@@ -9,6 +9,9 @@ import {
 import type { Kind, Line, Resume, Settings, Template } from "./flow";
 
 export const AGENT_CONFIG_KEY = "diyjobresume.agent.v1";
+export const AGENT_TURNS_KEY = "diyjobresume.agent.turns.v1";
+// 每份简历各存一份对话，切换简历不会串台
+export const turnsKey = (docId: string) => `${AGENT_TURNS_KEY}.${docId}`;
 const NOTICE_KEY = "diyjobresume.agent.notice.v1";
 
 export interface AgentConfig {

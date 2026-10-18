@@ -16,6 +16,7 @@ import {
   applyAgentActions,
   changesDigest,
   describeDoc,
+  turnsKey,
   loadAgentConfig,
   noticeAccepted,
   requestAgent,
@@ -30,16 +31,9 @@ const EXAMPLES = [
   "把专业技能排到最前面",
   "行距松一点，看着更透气",
 ];
-const TURNS_KEY = "diyjobresume.agent.turns.v1";
-// 每份简历各存一份对话，切换简历不会串台
-const turnsKey = (docId: string) => `${TURNS_KEY}.${docId}`;
-
 function loadTurns(docId: string): AgentTurn[] {
   try {
-    // 兼容升级前存在公共键里的对话，读到一次就会被写进当前简历自己的键
-    const raw =
-      localStorage.getItem(turnsKey(docId)) ||
-      localStorage.getItem(TURNS_KEY);
+    const raw = localStorage.getItem(turnsKey(docId));
     if (!raw) return [];
     const list = JSON.parse(raw) as AgentTurn[];
     return Array.isArray(list)
