@@ -148,6 +148,45 @@ function textRangeOf(root: HTMLElement, start: number, end: number) {
   range.setEnd(endNode, endOffset);
   return range;
 }
+function mdCaretTop(el: HTMLTextAreaElement, position: number) {
+  const style = window.getComputedStyle(el),
+    mirror = document.createElement("div");
+  [
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "letterSpacing",
+    "lineHeight",
+    "textTransform",
+    "textIndent",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth",
+    "boxSizing",
+    "tabSize",
+  ].forEach((name) => mirror.style.setProperty(name, style.getPropertyValue(name)));
+  mirror.style.position = "absolute";
+  mirror.style.top = "-9999px";
+  mirror.style.left = "0";
+  mirror.style.visibility = "hidden";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflowWrap = "break-word";
+  mirror.style.width = el.clientWidth + "px";
+  mirror.textContent = el.value.slice(0, position);
+  const marker = document.createElement("span");
+  marker.textContent = "\u200b";
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+  const top = marker.offsetTop;
+  mirror.remove();
+  return top;
+}
 function SimpleInput({
   line,
   index,
@@ -455,6 +494,8 @@ export default function Studio() {
     markBar = useRef<HTMLDivElement>(null);
   const caretMark = useRef<{ id: string; offset: number } | null>(null);
   const markTimer = useRef(0);
+  const mdMarkRef = useRef<HTMLDivElement>(null),
+    mdMarkTimer = useRef(0);
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const contactId = view.lines.find(
     (line, index) =>
@@ -664,6 +705,40 @@ export default function Studio() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [autoZoom, leftWidth, mobile]);
+  // Markdown 里把「跳到的那一行」画一条高亮带（不抢焦点，右边还能继续编辑）
+  const showMdLineMark = (
+    el: HTMLTextAreaElement,
+    start: number,
+    length: number,
+  ) => {
+    const mark = mdMarkRef.current;
+    if (!mark) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const style = window.getComputedStyle(el),
+      borderTop = parseFloat(style.borderTopWidth) || 0,
+      borderLeft = parseFloat(style.borderLeftWidth) || 0,
+      padLeft = parseFloat(style.paddingLeft) || 0,
+      padRight = parseFloat(style.paddingRight) || 0,
+      lineHeight = parseFloat(style.lineHeight) || 20,
+      top = mdCaretTop(el, start),
+      next = mdCaretTop(el, Math.min(el.value.length, start + length));
+    Object.assign(mark.style, {
+      display: "block",
+      left: rect.left + borderLeft + padLeft + "px",
+      top: rect.top + borderTop + top - el.scrollTop + "px",
+      width: Math.max(0, el.clientWidth - padLeft - padRight) + "px",
+      height: (next > top ? next - top : lineHeight) + "px",
+    });
+    // 重新触发一次动画，连续点击也能看到亮
+    mark.classList.remove("flash");
+    void mark.offsetWidth;
+    mark.classList.add("flash");
+    window.clearTimeout(mdMarkTimer.current);
+    mdMarkTimer.current = window.setTimeout(() => {
+      if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
+    }, 1400);
+  };
   const locate = (id: string) => {
     setSelected(id);
     flashLine(id);
@@ -678,22 +753,23 @@ export default function Studio() {
         behavior: "smooth",
       });
     } else {
-      const index = ref.current.lines.findIndex((l) => l.id === id),
-        start =
-          toMarkdown(ref.current.lines.slice(0, index)).length +
-          (index ? 1 : 0);
-      const el = mdRef.current;
-      if (el) {
-        mdSyncing.current = true;
-        el.setSelectionRange(
-          start,
-          start + toMarkdown([ref.current.lines[index]]).length,
-        );
-        el.scrollTop = Math.max(0, index * 25 - 6);
-        window.requestAnimationFrame(() => {
-          mdSyncing.current = false;
-        });
-      }
+      const lines = ref.current.lines,
+        index = lines.findIndex((l) => l.id === id),
+        el = mdRef.current;
+      if (index < 0 || !el) return;
+      const start =
+          toMarkdown(lines.slice(0, index)).length + (index ? 1 : 0),
+        length = toMarkdown([lines[index]]).length;
+      mdSyncing.current = true;
+      el.setSelectionRange(start, start + length);
+      el.scrollTop = Math.max(
+        0,
+        mdCaretTop(el, start) - Math.min(24, el.clientHeight / 4),
+      );
+      showMdLineMark(el, start, length);
+      window.setTimeout(() => {
+        mdSyncing.current = false;
+      }, 150);
     }
   };
   const flashLine = (id: string) => {
@@ -730,6 +806,7 @@ export default function Studio() {
   const jumpFromCaret = () => {
     const el = mdRef.current;
     if (!el || mdSyncing.current) return;
+    if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
     const lines = ref.current.lines;
     if (!lines.length) return;
     // 按每行在 Markdown 里占的字符数累加，兼容行内换行
@@ -1384,6 +1461,10 @@ export default function Studio() {
               value={source}
               onClick={jumpFromCaret}
               onSelect={jumpFromCaret}
+              onScroll={() => {
+                if (mdSyncing.current) return;
+                if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
+              }}
               onKeyUp={(e) => {
                 if (
                   ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(
@@ -2065,6 +2146,7 @@ export default function Studio() {
       </nav>
       <div ref={markWord} className="caret-word" aria-hidden="true" />
       <div ref={markBar} className="caret-bar" aria-hidden="true" />
+      <div ref={mdMarkRef} className="md-line-mark" aria-hidden="true" />
       <SelectionTools
         lines={doc.lines}
         onSource={(value, start, end) => {
