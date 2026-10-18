@@ -63,6 +63,7 @@ export function AgentPanel({
   doc,
   pageCount,
   measurePages,
+  docked = false,
   onApply,
   onPreview,
   onClearPreview,
@@ -72,6 +73,7 @@ export function AgentPanel({
   doc: Resume;
   pageCount: number;
   measurePages: (doc: Resume) => number;
+  docked?: boolean;
   onApply: (next: Resume) => void;
   onPreview: (next: Resume) => void;
   onClearPreview: () => void;
@@ -384,15 +386,21 @@ export function AgentPanel({
   };
 
   return (
-    <aside
-      className="agent-panel"
-      style={{ left: pos.x, top: pos.y }}
+    <div
+      className={`agent-panel${docked ? " agent-docked" : ""}`}
+      style={docked ? undefined : { left: pos.x, top: pos.y }}
       aria-label="排版助手"
     >
-      <header className="agent-head" onPointerDown={drag}>
+      <header
+        className="agent-head"
+        onPointerDown={docked ? undefined : drag}
+        style={docked ? { cursor: "default" } : undefined}
+      >
         <Sparkles size={16} />
         <b>排版助手</b>
-        <span className="agent-sub">只改排版，不改文字</span>
+        <span className="agent-sub">
+          {docked ? "占用样式面板，改完自动切回" : "只改排版，不改文字"}
+        </span>
         <div className="agent-tools">
           <button aria-label="清空对话" title="清空对话" onClick={clear}>
             <Eraser size={15} />
@@ -565,6 +573,6 @@ export function AgentPanel({
           <Send size={15} />
         </button>
       </form>
-    </aside>
+    </div>
   );
 }

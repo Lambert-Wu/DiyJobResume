@@ -494,6 +494,7 @@ export default function Studio() {
   const [panelPosition, setPanelPosition] = useState({ x: 16, y: 82 });
   const [cssOpen, setCssOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(true);
   const [contactOpen, setContactOpen] = useState(false);
   const pinnedPreview = useRef(false);
   const agentPreviewApi = useRef<{
@@ -1841,6 +1842,17 @@ export default function Studio() {
                 <option value="serif">Noto 宋体</option>
                 <option value="nunito">Nunito</option>
               </select>
+              <button
+                title={libraryOpen ? "收起样式面板" : "展开样式面板"}
+                aria-label="样式面板"
+                aria-pressed={libraryOpen}
+                onClick={() => {
+                  setAgentOpen(false);
+                  setLibraryOpen((open) => !open);
+                }}
+              >
+                <PanelRight size={17} />
+              </button>
             </div>
           </div>
           <div className="preview-spacer" />
@@ -2078,11 +2090,60 @@ export default function Studio() {
             <div className="paper-end">内容写到哪里，纸张就延伸到哪里。</div>
           </div>
         </main>
+        {agentOpen ? (
+          <aside
+            className={`library-panel agent-side ${mobile === "library" ? "mobile-active" : ""}`}
+            aria-label="排版助手"
+          >
+            <AgentPanel
+              docked
+              doc={doc}
+              pageCount={pages.length}
+              measurePages={measurePages}
+              onApply={(next) => historyUpdate(next)}
+              onPreview={(next) => {
+                pinnedPreview.current = false;
+                previewScroll.current = workspace.current?.scrollTop ?? 0;
+                previewReveal.current = false;
+                setPreview({
+                  key: "agent",
+                  doc: next,
+                  ids: [],
+                  label: "排版助手建议",
+                  kind: "agent",
+                });
+              }}
+              onClearPreview={() => {
+                agentPreviewApi.current = null;
+                setPreview(null);
+                previewScroll.current = null;
+              }}
+              registerPreviewApi={registerAgentPreview}
+              onClose={() => {
+                agentPreviewApi.current = null;
+                setPreview(null);
+                setAgentOpen(false);
+                setLibraryOpen(true);
+              }}
+            />
+          </aside>
+        ) : (
+          libraryOpen && (
         <aside
           className={`library-panel ${mobile === "library" ? "mobile-active" : ""}`}
         >
           <div className="library-heading">
-            <h2>简历样式</h2>
+            <div className="library-heading-row">
+              <h2>简历样式</h2>
+              <button
+                className="icon-button"
+                title="收起样式面板"
+                aria-label="收起样式面板"
+                onClick={() => setLibraryOpen(false)}
+              >
+                <PanelRight size={16} />
+              </button>
+            </div>
             <p>先选统一风格，再补充你的经历。</p>
           </div>
           <div className="library-tabs" role="tablist" aria-label="模板与内容">
@@ -2277,6 +2338,8 @@ export default function Studio() {
             )}
           </div>
         </aside>
+          )
+        )}
       </div>
       <nav className="mobile-nav">
         <button
@@ -2301,37 +2364,6 @@ export default function Studio() {
           模板与内容
         </button>
       </nav>
-      {agentOpen && (
-        <AgentPanel
-          doc={doc}
-          pageCount={pages.length}
-          measurePages={measurePages}
-          onApply={(next) => historyUpdate(next)}
-          onPreview={(next) => {
-            pinnedPreview.current = false;
-            previewScroll.current = workspace.current?.scrollTop ?? 0;
-            previewReveal.current = false;
-            setPreview({
-              key: "agent",
-              doc: next,
-              ids: [],
-              label: "排版助手建议",
-              kind: "agent",
-            });
-          }}
-          onClearPreview={() => {
-            agentPreviewApi.current = null;
-            setPreview(null);
-            previewScroll.current = null;
-          }}
-          registerPreviewApi={registerAgentPreview}
-          onClose={() => {
-            agentPreviewApi.current = null;
-            setPreview(null);
-            setAgentOpen(false);
-          }}
-        />
-      )}
       <div ref={markWord} className="caret-word" aria-hidden="true" />
       <div ref={markBar} className="caret-bar" aria-hidden="true" />
       <div ref={mdMarkRef} className="md-line-mark" aria-hidden="true" />
