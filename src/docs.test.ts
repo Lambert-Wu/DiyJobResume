@@ -136,6 +136,35 @@ describe("resume library", () => {
     expect(kept[0].text).toBe("新问题");
   });
 
+  it("keeps only the new part when the copy kept chatting", () => {
+    const first = initialResume(),
+      second = initialResume();
+    const legacyTurns = [
+      { role: "user", text: "旧问题" },
+      { role: "assistant", text: "旧回答" },
+    ];
+    const store = memoryStorage({
+      [DOCS_KEY]: JSON.stringify({
+        activeId: "new",
+        items: [
+          { id: "old", name: "旧简历", updatedAt: 1, doc: first },
+          { id: "new", name: "新简历", updatedAt: 2, doc: second },
+        ],
+      }),
+      [AGENT_TURNS_KEY]: JSON.stringify(legacyTurns),
+      [turnsKey("new")]: JSON.stringify([
+        ...legacyTurns,
+        { role: "user", text: "新问题" },
+      ]),
+    });
+    vi.stubGlobal("localStorage", store);
+
+    loadLibrary();
+    const kept = JSON.parse(store.dump()[turnsKey("new")] ?? "[]");
+    expect(kept).toHaveLength(1);
+    expect(kept[0].text).toBe("新问题");
+  });
+
   it("leaves a real conversation on another resume alone", () => {
     const first = initialResume(),
       second = initialResume();
