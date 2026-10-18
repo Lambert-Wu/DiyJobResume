@@ -2634,3 +2634,9 @@ a {
 .doc-switch {
   z-index: auto;
 }
+
+/* .doc-switch 一旦有 z-index 就会形成层叠上下文，里面 90 的下拉框会被困在这一层，
+   反被左侧拖动条（z-index 5）压住。这里保持 auto，让下拉框按全局层级（90）参与比较 */
+.doc-switch {
+  z-index: auto;
+}
