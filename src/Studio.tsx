@@ -152,27 +152,27 @@ function mdCaretTop(el: HTMLTextAreaElement, position: number) {
   const style = window.getComputedStyle(el),
     mirror = document.createElement("div");
   [
-    "fontFamily",
-    "fontSize",
-    "fontWeight",
-    "fontStyle",
-    "letterSpacing",
-    "lineHeight",
-    "textTransform",
-    "textIndent",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-    "borderTopWidth",
-    "borderRightWidth",
-    "borderBottomWidth",
-    "borderLeftWidth",
-    "boxSizing",
-    "tabSize",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "letter-spacing",
+    "line-height",
+    "text-transform",
+    "text-indent",
+    "padding-top",
+    "padding-right",
+    "padding-bottom",
+    "padding-left",
+    "border-top-width",
+    "border-right-width",
+    "border-bottom-width",
+    "border-left-width",
+    "box-sizing",
+    "tab-size",
   ].forEach((name) => mirror.style.setProperty(name, style.getPropertyValue(name)));
   mirror.style.position = "absolute";
-  mirror.style.top = "-9999px";
+  mirror.style.top = "0";
   mirror.style.left = "0";
   mirror.style.visibility = "hidden";
   mirror.style.whiteSpace = "pre-wrap";
@@ -183,7 +183,9 @@ function mdCaretTop(el: HTMLTextAreaElement, position: number) {
   marker.textContent = "\u200b";
   mirror.appendChild(marker);
   document.body.appendChild(mirror);
-  const top = marker.offsetTop;
+  // 用两个 rect 的差，避免 offsetTop 在不同浏览器里对 padding 解释不一致
+  const top =
+    marker.getBoundingClientRect().top - mirror.getBoundingClientRect().top;
   mirror.remove();
   return top;
 }
@@ -722,7 +724,8 @@ export default function Studio() {
       padRight = parseFloat(style.paddingRight) || 0,
       lineHeight = parseFloat(style.lineHeight) || 20,
       top = mdCaretTop(el, start),
-      next = mdCaretTop(el, Math.min(el.value.length, start + length));
+      // 下一行行首的位置就是本行底边（长行折行也能盖全）
+      next = mdCaretTop(el, Math.min(el.value.length, start + length + 1));
     Object.assign(mark.style, {
       display: "block",
       left: rect.left + borderLeft + padLeft + "px",
