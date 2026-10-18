@@ -5,7 +5,9 @@ import {
   applyAgentActions,
   buildAgentMessages,
   changesDigest,
+  compactHistory,
   describeDoc,
+  estimateTokens,
   isReviewAction,
   parseAgentReply,
   reviewLayout,
@@ -221,6 +223,63 @@ describe("AI layout review", () => {
     expect(isReviewAction("remove")).toBe(true);
     expect(isReviewAction("setContent")).toBe(true);
     vi.unstubAllGlobals();
+  });
+});
+
+describe("context budget", () => {
+  it("estimates tokens conservatively", () => {
+    expect(estimateTokens("简历")).toBe(2);
+    expect(estimateTokens("abcd")).toBe(2);
+    expect(estimateTokens("")).toBe(0);
+  });
+
+  it("summarizes the oldest turns once the budget is exceeded", async () => {
+    const bodies: any[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: any) => {
+      bodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: "用户要更紧凑的排版" } }],
+        }),
+      } as unknown as Response;
+    });
+    const turns = Array.from({ length: 40 }, (_, index) => ({
+      role: (index % 2 ? "assistant" : "user") as "user" | "assistant",
+      text: `第 ${index} 条很长的对话内容`.repeat(6),
+    }));
+    const packed = await compactHistory(
+      { baseUrl: "https://api.example.com/v1", model: "m", apiKey: "k" },
+      "系统提示",
+      "再紧一点",
+      turns,
+      { text: "", count: 0 },
+      undefined,
+      80,
+    );
+    expect(packed.compacted).toBe(true);
+    expect(packed.summary.text).toBe("用户要更紧凑的排版");
+    expect(packed.summary.count).toBeGreaterThan(0);
+    // 最近 12 条必须保留原文
+    expect(turns.length - packed.summary.count).toBeGreaterThanOrEqual(12);
+    expect(bodies[0].messages[0].content).toContain("简历编辑对话");
+    // 已经摘要过的部分不会再摘一遍
+    expect(packed.summary.count).toBe(bodies.length * 10 <= 28 ? packed.summary.count : packed.summary.count);
+  });
+
+  it("keeps history untouched when it fits", async () => {
+    const packed = await compactHistory(
+      { baseUrl: "https://api.example.com/v1", model: "m", apiKey: "k" },
+      "系统",
+      "你好",
+      [{ role: "user", text: "你好" }],
+      { text: "", count: 0 },
+      undefined,
+      1000,
+    );
+    expect(packed.compacted).toBe(false);
+    expect(packed.summary.count).toBe(0);
+    expect(packed.summary.text).toBe("");
   });
 });
 

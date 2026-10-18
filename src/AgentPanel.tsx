@@ -15,6 +15,7 @@ import {
   acceptNotice,
   applyAgentActions,
   changesDigest,
+  compactHistory,
   describeDoc,
   isReviewAction,
   reviewLayout,
@@ -24,7 +25,12 @@ import {
   requestAgent,
   saveAgentConfig,
 } from "./agent";
-import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
+import type {
+  AgentAction,
+  AgentConfig,
+  AgentSummary,
+  AgentTurn,
+} from "./agent";
 import { layoutSteps, textToLines } from "./importText";
 
 import type { Resume } from "./flow";
@@ -35,6 +41,22 @@ const EXAMPLES = [
   "把专业技能排到最前面",
   "行距松一点，看着更透气",
 ];
+const summaryKey = (docId: string) => `diyjobresume.agent.summary.v1.${docId}`;
+
+function loadSummary(docId: string): AgentSummary {
+  try {
+    const raw = localStorage.getItem(summaryKey(docId));
+    if (!raw) return { text: "", count: 0 };
+    const saved = JSON.parse(raw) as Partial<AgentSummary>;
+    return {
+      text: typeof saved.text === "string" ? saved.text : "",
+      count: Number(saved.count) || 0,
+    };
+  } catch {
+    return { text: "", count: 0 };
+  }
+}
+
 function loadTurns(docId: string): AgentTurn[] {
   try {
     const raw = localStorage.getItem(turnsKey(docId));
@@ -108,6 +130,7 @@ export function AgentPanel({
       total: number;
     } | null>(null),
     [turns, setTurns] = useState<AgentTurn[]>(() => loadTurns(docId)),
+    [summary, setSummary] = useState<AgentSummary>(() => loadSummary(docId)),
     [pending, setPending] = useState<{
       actions: AgentAction[];
       notes: string[];
@@ -136,6 +159,16 @@ export function AgentPanel({
       /* 存不下也不影响使用 */
     }
   }, [turns, docId]);
+
+  useEffect(() => {
+    try {
+      if (summary.text || summary.count)
+        localStorage.setItem(summaryKey(docId), JSON.stringify(summary));
+      else localStorage.removeItem(summaryKey(docId));
+    } catch {
+      /* 存不下不影响使用 */
+    }
+  }, [summary, docId]);
 
   const drag = (e: ReactPointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -252,7 +285,32 @@ export function AgentPanel({
     const controller = new AbortController(),
       timer = window.setTimeout(() => controller.abort(), 90000);
     try {
-      const reply = await askModel(system, history, text, controller.signal);
+      // 超过上下文预算就把最早的对话压成摘要，只带摘要 + 最近几条继续聊
+      let active = summary,
+        recent = history;
+      if (config.apiKey.trim() && config.model.trim()) {
+        try {
+          const packed = await compactHistory(
+            config,
+            system,
+            text,
+            history,
+            summary,
+            controller.signal,
+          );
+          if (packed.compacted) {
+            active = packed.summary;
+            setSummary(active);
+          }
+          recent = history.slice(active.count);
+        } catch {
+          /* 摘要失败就按原样发送 */
+        }
+      }
+      const withMemory = active.text
+        ? `${system}\n\n早前对话摘要：\n${active.text}`
+        : system;
+      const reply = await askModel(withMemory, recent, text, controller.signal);
       setTurns((all) => [
         ...all,
         { role: "assistant", text: reply.reply },
@@ -406,6 +464,7 @@ export function AgentPanel({
 
   const clear = () => {
     setTurns([]);
+    setSummary({ text: "", count: 0 });
     setPending(null);
     setError("");
     setTestResult("");

@@ -296,6 +296,106 @@ export function stripStructure(markdown: string) {
     .replace(/[\s|｜·•]/g, "");
 }
 
+// 单次请求的上下文预算（粗略按 token 计）。超过就把早前的对话压成摘要。
+export const AGENT_CONTEXT_LIMIT = 300_000;
+// 摘要时至少保留最近这么多条原文，避免刚说过的内容被压掉
+const KEEP_RECENT_TURNS = 12;
+const SUMMARY_BATCH = 10;
+
+// 中文按 1 字 1 token 估，其它字符按 3.5 字 1 token 估，偏保守
+export function estimateTokens(text: string) {
+  let wide = 0,
+    narrow = 0;
+  for (const char of text) {
+    if ((char.codePointAt(0) || 0) >= 0x2e80) wide++;
+    else narrow++;
+  }
+  return Math.ceil(wide + narrow / 3.5);
+}
+
+export const AGENT_SUMMARY_PROMPT = `你在压缩一段「简历编辑对话」，供后续继续对话时参考。
+把「已有摘要」和「新增对话」合并成一段不超过 400 字的中文摘要，必须保留：
+1) 用户提过的要求、偏好和禁止事项；
+2) 已经应用的改动、被拒绝或被忽略的改动；
+3) 还没解决的问题。
+不要编造，不要写寒暄。只输出摘要正文。`;
+
+async function summarizeTurns(
+  config: AgentConfig,
+  previous: string,
+  batch: AgentTurn[],
+  signal?: AbortSignal,
+) {
+  const url = config.baseUrl.trim().replace(/\/+$/, "") + "/chat/completions";
+  const res = await fetch(url, {
+    method: "POST",
+    signal,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${config.apiKey.trim()}`,
+    },
+    body: JSON.stringify({
+      model: config.model.trim(),
+      temperature: 0,
+      messages: [
+        { role: "system", content: AGENT_SUMMARY_PROMPT },
+        {
+          role: "user",
+          content: `已有摘要：\n${previous || "（无）"}\n\n新增对话：\n${batch
+            .map((turn) =>
+              `${turn.role === "user" ? "用户" : "助手"}：${turn.text}${
+                turn.notes?.length ? `（改动：${turn.notes.join("；")}）` : ""
+              }`,
+            )
+            .join("\n")}`,
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`摘要接口返回 ${res.status}`);
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  return (data.choices?.[0]?.message?.content || "").trim();
+}
+
+export interface AgentSummary {
+  text: string;
+  count: number;
+}
+
+// 超出预算时，把最早的对话分批摘要，留一个可续用的摘要 + 最近若干条原文
+export async function compactHistory(
+  config: AgentConfig,
+  system: string,
+  input: string,
+  turns: AgentTurn[],
+  summary: AgentSummary,
+  signal?: AbortSignal,
+  budget = AGENT_CONTEXT_LIMIT,
+) {
+  let text = summary.text,
+    count = Math.max(0, Math.min(summary.count, turns.length));
+  const size = () =>
+    estimateTokens(system) +
+    estimateTokens(input) +
+    estimateTokens(text) +
+    estimateTokens(
+      turns
+        .slice(count)
+        .map((turn) => turn.text + (turn.notes?.join("") || ""))
+        .join(""),
+    );
+  let compacted = false;
+  while (size() > budget && turns.length - count > KEEP_RECENT_TURNS) {
+    const next = Math.min(turns.length - KEEP_RECENT_TURNS, count + SUMMARY_BATCH);
+    text = await summarizeTurns(config, text, turns.slice(count, next), signal);
+    count = next;
+    compacted = true;
+  }
+  return { summary: { text, count }, compacted };
+}
+
 export async function requestAgent(
   config: AgentConfig,
   system: string,
