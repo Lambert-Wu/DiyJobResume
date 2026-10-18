@@ -38,7 +38,8 @@ import {
   uid,
   paginate,
   moveGroupToBoundary,
-  snapToBlockBoundary,
+  resolveDropBoundary,
+  blockRange,
   groupEnd,
 } from "./flow";
 import type {
@@ -295,6 +296,7 @@ function Editable({
   onBlur,
   ghost = false,
   flashing = false,
+  allowDrop,
 }: {
   piece: Piece;
   template: Template;
@@ -311,6 +313,7 @@ function Editable({
   onBlur: () => void;
   ghost?: boolean;
   flashing?: boolean;
+  allowDrop?: (id: string) => boolean;
 }) {
   const el = useRef<HTMLDivElement>(null),
     composing = useRef(false),
@@ -335,7 +338,7 @@ function Editable({
       className={`paper-row ${ghost ? "ghost-row" : ""} ${selected ? "selected" : ""} ${armed ? "armed" : ""} ${flashing ? "flash-row" : ""}`}
       data-preview={ghost ? "true" : undefined}
       onPointerDown={(e) => {
-        if (!ghost) holdDrag(e, piece.line.id, onMove);
+        if (!ghost) holdDrag(e, piece.line.id, onMove, 350, allowDrop);
       }}
       data-line={piece.line.id}
       data-start={piece.start}
@@ -1130,12 +1133,22 @@ export default function Studio() {
     const lines = ref.current.lines,
       at = lines.findIndex((l) => l.id === target);
     if (at < 0) return;
-    let boundary = after ? groupEnd(lines, at) : at;
-    // 板块标题只能落在整块之间，不许插进别人内容里
-    if (lines.find((l) => l.id === dragId)?.kind === "section")
-      boundary = snapToBlockBoundary(lines, boundary, dragId);
+    const boundary = resolveDropBoundary(
+      lines,
+      dragId,
+      after ? groupEnd(lines, at) : at,
+    );
     const next = moveGroupToBoundary(ref.current, dragId, boundary);
     if (next !== ref.current) historyUpdate(next);
+  };
+  // 普通行只允许落在自己板块内，拖动时的落点提示也只认这些行
+  const blockAllow = (lineId: string) => {
+    const lines = ref.current.lines,
+      from = lines.findIndex((l) => l.id === lineId);
+    if (from < 0 || lines[from].kind === "section") return undefined;
+    const { start, end } = blockRange(lines, from),
+      ids = new Set(lines.slice(start + 1, end).map((l) => l.id));
+    return (id: string) => ids.has(id);
   };
   const backspaceLine = (id: string) => {
     const lines = [...ref.current.lines],
@@ -1554,8 +1567,12 @@ export default function Studio() {
                       scrollPaperTo(line.id);
                     }}
                     onPointerDown={(e) =>
-                      holdDrag(e, line.id, (target, after) =>
-                        dropLineAt(line.id, target, after),
+                      holdDrag(
+                        e,
+                        line.id,
+                        (target, after) => dropLineAt(line.id, target, after),
+                        350,
+                        blockAllow(line.id),
                       )
                     }
                   >
@@ -1575,6 +1592,7 @@ export default function Studio() {
                                 flashLine(line.id);
                               },
                               0,
+                              blockAllow(line.id),
                             )
                           }
                         >
@@ -1821,6 +1839,7 @@ export default function Studio() {
                       settings={view.settings}
                       ghost={preview?.ids.includes(piece.line.id)}
                       flashing={flash === piece.line.id}
+                      allowDrop={blockAllow(piece.line.id)}
                       selected={
                         selected === piece.line.id ||
                         hovered === piece.line.id ||

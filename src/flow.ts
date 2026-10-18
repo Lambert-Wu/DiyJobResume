@@ -455,6 +455,29 @@ export function snapToBlockBoundary(
     if (Math.abs(start - boundary) < Math.abs(best - boundary)) best = start;
   return best;
 }
+// index 这一行属于哪个板块：板块标题本身、它后面的内容都算同一块；
+// 第一个板块标题之前的内容（姓名、联系方式）算表头块。
+export function blockRange(lines: Line[], index: number) {
+  let start = -1;
+  for (let i = 0; i < index; i++) if (lines[i].kind === "section") start = i;
+  if (lines[index]?.kind === "section") start = index;
+  if (start >= 0) return { start, end: groupEnd(lines, start) };
+  const firstSection = lines.findIndex((l) => l.kind === "section");
+  return { start: 0, end: firstSection < 0 ? lines.length : firstSection };
+}
+// 拖放落点的最终修正：板块标题吸附到整块之间；普通行只能待在自己板块内
+export function resolveDropBoundary(
+  lines: Line[],
+  dragId: string,
+  boundary: number,
+): number {
+  const from = lines.findIndex((l) => l.id === dragId);
+  if (from < 0) return boundary;
+  if (lines[from].kind === "section")
+    return snapToBlockBoundary(lines, boundary, dragId);
+  const { start, end } = blockRange(lines, from);
+  return Math.min(end, Math.max(start + 1, boundary));
+}
 const numeric = (v: unknown, d: number, min: number, max: number) =>
   typeof v === "number" && Number.isFinite(v)
     ? Math.min(max, Math.max(min, v))

@@ -66,6 +66,7 @@ export function holdDrag(
   id: string,
   onMove: (target: string, after: boolean) => void,
   holdMs = 350,
+  allow?: (id: string) => boolean,
 ) {
   if (e.button !== 0) return;
   if (holdMs && (e.target as HTMLElement).closest("button,input,select,a")) return;
@@ -92,6 +93,9 @@ export function holdDrag(
     for (const row of rows) {
       const box = row.getBoundingClientRect();
       if (!box.height) continue;
+      const rowId = row.dataset.field || row.dataset.line || "";
+      if (rowId === id) continue;
+      if (allow && !allow(rowId)) continue;
       last = row;
       if (y < box.top + box.height / 2) return { row, after: false };
     }
