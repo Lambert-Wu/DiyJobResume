@@ -72,7 +72,7 @@ export const templates: {
 }[] = [
   {
     id: "blue",
-    name: "炒肉多经典",
+    name: "经典蓝",
     desc: "居中表头 · 蓝色细线 · 紧凑清晰",
     color: "#0756a5",
   },
@@ -222,7 +222,7 @@ export const demo = demoFor("blue");
 export function initialResume(template: Template = "blue"): Resume {
   return {
     version: 2,
-    name: "炒肉多的简历",
+    name: "张小明的简历",
     template,
     lines: parseMarkdown(demoFor(template)),
     settings: {
@@ -338,7 +338,7 @@ const extraVariants: Record<string, { name: string; body: string }[]> = {
   项目经历: [
     {
       name: "项目卡片 · 链接与技术栈",
-      body: "### 项目名称 | 开始 — 结束\n[项目地址](https://github.com/Xiaoc7r)\n`技术一` `技术二` `技术三`\n**项目目标：**解决的问题与使用场景。\n- **个人贡献：**实现与取舍。",
+      body: "### 项目名称 | 开始 — 结束\n[项目地址](https://github.com/example)\n`技术一` `技术二` `技术三`\n**项目目标：**解决的问题与使用场景。\n- **个人贡献：**实现与取舍。",
     },
     {
       name: "方案拆解 · 编号成果",

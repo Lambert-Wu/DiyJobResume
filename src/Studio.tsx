@@ -1419,7 +1419,7 @@ export default function Studio() {
         <a className="brand" href="./">
           <FileText size={23} />
           <span>
-            简历工坊<small>炒肉多，写简历。</small>
+            简历工坊<small>写一份看得清的简历。</small>
           </span>
         </a>
         <input
@@ -2204,8 +2204,8 @@ export default function Studio() {
                       className={`mini-paper mini-${t.id}`}
                       style={{ "--mini-accent": t.color } as CSSProperties}
                     >
-                      <strong>炒肉多</strong>
-                      <small>138 0000 2468 | xxiaocr@gmail.com</small>
+                      <strong>张小明</strong>
+                      <small>138 0000 2468 | zhangxiaoming@example.com</small>
                       {["教育背景", "实习经历", "项目经历", "专业技能"].map(
                         (s, i) => (
                           <div key={s}>
