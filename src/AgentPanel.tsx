@@ -538,15 +538,23 @@ export function AgentPanel({
       </div>
 
       <div className="agent-quick">
-        <button
-          disabled={busy}
-          onClick={() => void fitOnePage()}
-          title="自动测量页数，一轮不够就继续压，最多三轮"
-        >
-          <Minimize2 size={13} />
-          压到一页
-        </button>
-        <span>当前 {pageCount} 页</span>
+        {pageCount > 1 ? (
+          <>
+            <button
+              disabled={busy}
+              onClick={() => void fitOnePage()}
+              title="自动测量页数，一轮不够就继续压，最多三轮"
+            >
+              <Minimize2 size={13} />
+              压到一页
+            </button>
+            <span>当前 {pageCount} 页</span>
+          </>
+        ) : (
+          <span className="agent-quick-done">
+            已经排进 1 页
+          </span>
+        )}
       </div>
 
       <form
