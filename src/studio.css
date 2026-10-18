@@ -2385,3 +2385,13 @@ a {
   font-size: 11px;
   line-height: 1.5;
 }
+.panel-resizer-right {
+  width: 6px;
+  border-inline: 1px solid #e2ded8;
+  background: #f2efea;
+}
+.panel-resizer-right {
+  width: 6px;
+  border-inline: 1px solid #e2ded8;
+  background: #f2efea;
+}

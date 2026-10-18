@@ -494,6 +494,7 @@ export default function Studio() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [editorOpen, setEditorOpen] = useState(true);
+  const [rightWidth, setRightWidth] = useState(248);
   const pinnedPreview = useRef(false);
   const agentPreviewApi = useRef<{
     accept: () => void;
@@ -1088,6 +1089,26 @@ export default function Studio() {
     target.addEventListener("pointermove", move as EventListener);
     target.addEventListener("pointerup", end, { once: true });
   };
+  const resizeRight = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const start = e.clientX,
+      width = rightWidth,
+      target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    const move = (event: PointerEvent) =>
+      setRightWidth(
+        Math.max(
+          220,
+          Math.min(window.innerWidth * 0.5, width + (start - event.clientX)),
+        ),
+      );
+    const end = () => {
+      target.removeEventListener("pointermove", move as EventListener);
+      target.removeEventListener("pointerup", end);
+    };
+    target.addEventListener("pointermove", move as EventListener);
+    target.addEventListener("pointerup", end, { once: true });
+  };
   const dragPicture = (e: ReactPointerEvent, pic: Picture, resize = false) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1454,6 +1475,7 @@ export default function Studio() {
               } else {
                 setAgentOpen(true);
                 setLibraryOpen(false);
+                setRightWidth((w) => Math.max(w, 320));
               }
             }}
           >
@@ -2072,9 +2094,29 @@ export default function Studio() {
             <div className="paper-end">内容写到哪里，纸张就延伸到哪里。</div>
           </div>
         </main>
+        {(agentOpen || libraryOpen) && (
+          <div
+            role="separator"
+            aria-label="调整右侧面板宽度"
+            aria-orientation="vertical"
+            aria-valuenow={Math.round(rightWidth)}
+            tabIndex={0}
+            className="panel-resizer panel-resizer-right"
+            onPointerDown={resizeRight}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft")
+                setRightWidth((w) => Math.min(window.innerWidth * 0.5, w + 20));
+              if (e.key === "ArrowRight")
+                setRightWidth((w) => Math.max(220, w - 20));
+            }}
+          >
+            <GripVertical size={12} />
+          </div>
+        )}
         {agentOpen ? (
           <aside
             className={`library-panel agent-side ${mobile === "library" ? "mobile-active" : ""}`}
+            style={{ width: rightWidth, minWidth: rightWidth }}
             aria-label="排版助手"
           >
             <AgentPanel
@@ -2112,6 +2154,7 @@ export default function Studio() {
           libraryOpen && (
         <aside
           className={`library-panel ${mobile === "library" ? "mobile-active" : ""}`}
+          style={{ width: rightWidth, minWidth: rightWidth }}
         >
           <div className="library-heading">
             <div className="library-heading-row">
