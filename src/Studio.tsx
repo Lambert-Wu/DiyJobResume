@@ -8,8 +8,6 @@ import {
 } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
-  Github,
-  Mail,
   Code2,
   Undo2,
   Redo2,
@@ -495,7 +493,6 @@ export default function Studio() {
   const [cssOpen, setCssOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
-  const [contactOpen, setContactOpen] = useState(false);
   const pinnedPreview = useRef(false);
   const agentPreviewApi = useRef<{
     accept: () => void;
@@ -1442,41 +1439,28 @@ export default function Studio() {
           {saved}
         </span>
         <div className="header-actions">
-          <a
-            className="icon-button github-link"
-            href="https://github.com/Xiaoc7r/DiyJobResume"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="GitHub 仓库"
-            aria-label="GitHub 仓库"
-          >
-            <Github size={20} />
-          </a>
-          <div className="contact-wrap">
-            <button
-              className="icon-button"
-              title="联系方式"
-              aria-label="联系方式"
-              aria-expanded={contactOpen}
-              onClick={() => setContactOpen(!contactOpen)}
-            >
-              <Mail size={19} />
-            </button>
-            {contactOpen && (
-              <div className="contact-popover">
-                <span>联系炒肉多</span>
-                <a href="mailto:xxiaocr@gmail.com">xxiaocr@gmail.com</a>
-              </div>
-            )}
-          </div>
           <button
-            className="icon-button"
-            title="排版助手（AI）"
+            className="header-mode"
+            title={libraryOpen ? "收起右侧的简历样式面板" : "展开右侧的简历样式面板"}
+            aria-label="简历样式"
+            aria-pressed={libraryOpen}
+            onClick={() => {
+              setAgentOpen(false);
+              setLibraryOpen((open) => !open);
+            }}
+          >
+            <PanelRight size={16} />
+            <span>简历样式</span>
+          </button>
+          <button
+            className="header-mode agent-mode"
+            title="打开 AI 排版助手：用一句话让它调排版"
             aria-label="排版助手"
             aria-pressed={agentOpen}
             onClick={() => setAgentOpen(!agentOpen)}
           >
-            <Sparkles size={18} />
+            <Sparkles size={16} />
+            <span>AI 排版</span>
           </button>
           <button
             className="icon-button"
@@ -1842,17 +1826,6 @@ export default function Studio() {
                 <option value="serif">Noto 宋体</option>
                 <option value="nunito">Nunito</option>
               </select>
-              <button
-                title={libraryOpen ? "收起样式面板" : "展开样式面板"}
-                aria-label="样式面板"
-                aria-pressed={libraryOpen}
-                onClick={() => {
-                  setAgentOpen(false);
-                  setLibraryOpen((open) => !open);
-                }}
-              >
-                <PanelRight size={17} />
-              </button>
             </div>
           </div>
           <div className="preview-spacer" />

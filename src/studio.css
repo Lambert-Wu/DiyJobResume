@@ -2367,3 +2367,39 @@ a {
 .agent-docked .agent-log {
   min-height: 80px;
 }
+
+/* 顶栏两个带文字的开关，一眼看清是干什么的 */
+.header-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #e0dbd3;
+  border-radius: 999px;
+  background: #fff;
+  color: #5c5148;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.header-mode:hover {
+  border-color: #cbb9a8;
+  background: #fdf8f3;
+  color: #6d4938;
+}
+.header-mode[aria-pressed="true"] {
+  border-color: #b87559;
+  background: #f8ece4;
+  color: #8a4e33;
+}
+.header-mode.agent-mode svg {
+  color: #b87559;
+}
+@media (max-width: 1240px) {
+  .header-mode span {
+    display: none;
+  }
+  .header-mode {
+    padding: 0 8px;
+  }
+}
