@@ -209,6 +209,10 @@ export function AgentPanel({
     setError("");
     setPending(null);
     onClearPreview();
+    // 先把用户这句话和“正在生成”放上去，再去请求
+    setInput("");
+    setTurns((all) => [...all, { role: "user", text }]);
+    const history = turns;
     const system =
       AGENT_SYSTEM_PROMPT +
       AGENT_CONTENT_PROMPT +
@@ -217,13 +221,11 @@ export function AgentPanel({
     const controller = new AbortController(),
       timer = window.setTimeout(() => controller.abort(), 90000);
     try {
-      const reply = await askModel(system, turns, text, controller.signal);
+      const reply = await askModel(system, history, text, controller.signal);
       setTurns((all) => [
         ...all,
-        { role: "user", text },
         { role: "assistant", text: reply.reply },
       ]);
-      setInput("");
       if (reply.actions.length) {
         const applied = applyAgentActions(doc, reply.actions);
         setPending({
