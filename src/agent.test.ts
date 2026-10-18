@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_CONTENT_PROMPT,
   AGENT_SYSTEM_PROMPT,
   applyAgentActions,
   describeDoc,
@@ -84,6 +85,52 @@ describe("agent layout actions", () => {
   });
 });
 
+describe("agent content actions", () => {
+  it("rewrites a line while keeping its kind", () => {
+    const next = applyAgentActions(doc(), [
+      { type: "setText", line: 5, text: "主修课程：数据结构、编译原理" },
+    ]);
+    expect(next.doc.lines[4].text).toBe("主修课程：数据结构、编译原理");
+    expect(next.doc.lines[4].kind).toBe("bullet");
+    expect(next.notes).toHaveLength(1);
+  });
+  it("inserts and removes lines by number", () => {
+    const before = doc();
+    const inserted = applyAgentActions(before, [
+      { type: "insert", after: 5, kind: "bullet", text: "新增一条要点" },
+    ]).doc;
+    expect(inserted.lines).toHaveLength(before.lines.length + 1);
+    expect(inserted.lines[5].text).toBe("新增一条要点");
+    const removed = applyAgentActions(inserted, [
+      { type: "remove", line: 6 },
+    ]).doc;
+    expect(removed.lines).toHaveLength(before.lines.length);
+  });
+  it("rejects out-of-range line numbers instead of throwing", () => {
+    const next = applyAgentActions(doc(), [
+      { type: "setText", line: 99, text: "x" },
+      { type: "remove", line: 0 },
+    ]);
+    expect(next.notes).toHaveLength(0);
+    expect(next.skipped).toHaveLength(2);
+  });
+  it("replaces text across the whole document", () => {
+    const next = applyAgentActions(doc(), [
+      { type: "replace", find: "示例", replace: "样例" },
+    ]);
+    const text = toMarkdown(next.doc.lines);
+    expect(text).toContain("样例大学");
+    expect(text).not.toContain("示例大学");
+    expect(next.notes[0]).toContain("2 处");
+  });
+  it("changes a line kind", () => {
+    const next = applyAgentActions(doc(), [
+      { type: "setKind", line: 5, kind: "section" },
+    ]);
+    expect(next.doc.lines[4].kind).toBe("section");
+  });
+});
+
 describe("agent reply parsing", () => {
   it("reads JSON even when wrapped in a code fence", () => {
     const reply = parseAgentReply(
@@ -105,6 +152,12 @@ describe("prompt context", () => {
     expect(text).toContain("教育背景");
     expect(text).toContain("页边距");
     expect(text).not.toContain("主修课程");
-    expect(AGENT_SYSTEM_PROMPT).toContain("不能改动用户写下的任何文字内容");
+    expect(AGENT_SYSTEM_PROMPT).toContain("默认只调整「样式与结构」");
+  });
+  it("includes numbered content only when content mode is on", () => {
+    const withContent = describeDoc(doc(), 1, true);
+    expect(withContent).toContain("3: ## 教育背景");
+    expect(withContent).toContain("主修课程");
+    expect(AGENT_CONTENT_PROMPT).toContain("setText");
   });
 });

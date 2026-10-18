@@ -1,5 +1,12 @@
-import { groupEnd, moveGroupToBoundary, templates } from "./flow";
-import type { Kind, Resume, Settings, Template } from "./flow";
+import {
+  groupEnd,
+  kindLabels,
+  moveGroupToBoundary,
+  templates,
+  toMarkdown,
+  uid,
+} from "./flow";
+import type { Kind, Line, Resume, Settings, Template } from "./flow";
 
 export const AGENT_CONFIG_KEY = "diyjobresume.agent.v1";
 const NOTICE_KEY = "diyjobresume.agent.notice.v1";
@@ -69,11 +76,20 @@ const num = (v: unknown, min: number, max: number, fallback: number) => {
     ? Math.min(max, Math.max(min, Math.round(n * 100) / 100))
     : fallback;
 };
+// 行号必须严格落在范围内：不要把 0 / 超界的值“夹”进来，否则会误删第一行
+const lineNo = (v: unknown, max: number, allowZero = false) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= (allowZero ? 0 : 1) && n <= max ? n : -1;
+};
 const hexColor = (v: unknown) =>
   typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : "";
 
 // 给模型看的当前排版摘要：只放排版参数和板块结构，不放正文，省 token 也少泄露
-export function describeDoc(doc: Resume, pageCount = 1) {
+export function describeDoc(
+  doc: Resume,
+  pageCount = 1,
+  includeContent = false,
+) {
   const s = doc.settings,
     types = KINDS.map((k) => {
       const t = s.types[k];
@@ -89,7 +105,7 @@ export function describeDoc(doc: Resume, pageCount = 1) {
       `${index}. ${line.text}（${groupEnd(doc.lines, i) - i - 1} 行内容）`,
     );
   }
-  return [
+  const head = [
     `模板：${doc.template}（${templates.find((t) => t.id === doc.template)?.name || ""}）`,
     `字体：${s.font}；行高：${s.lineHeight}；表头：${s.headerAlign}`,
     `页边距 上${s.top}/下${s.bottom}/左${s.left}/右${s.right}px`,
@@ -97,10 +113,32 @@ export function describeDoc(doc: Resume, pageCount = 1) {
     `字号(段前/段后)：${types}`,
     `板块顺序：${sections.join(" / ") || "（没有板块标题）"}`,
     `总行数：${doc.lines.length}；当前页数：${pageCount}`,
-  ].join("\n");
+  ];
+  if (includeContent)
+    head.push(
+      "",
+      "正文（数字是行号，含 markdown 标记）：",
+      ...doc.lines.map((line, index) => `${index + 1}: ${toMarkdown([line])}`),
+    );
+  return head.join("\n");
 }
 
-export const AGENT_SYSTEM_PROMPT = `你是简历排版助手。用户会用中文描述排版上的需求，你只能调整「样式与结构」，绝对不能改动用户写下的任何文字内容。
+export const AGENT_CONTENT_PROMPT = `
+你还被允许修改文字内容（仅在用户明确要求改写、补充、删除、调整顺序时使用，不要自作主张）：
+12 {"type":"setText","line":4,"text":"新的这一行文字"} 改写第 4 行（保留原来的行类型，不要带 markdown 标记里的行前缀）
+13 {"type":"setKind","line":4,"kind":"text|bullet|section|entry|h4|h5|h6|ordered"} 改这一行的类型
+14 {"type":"insert","after":4,"kind":"bullet","text":"新的要点"} 在第 4 行后面插入一行（after 用 0 表示插到最前面）
+15 {"type":"remove","line":4} 删除第 4 行
+16 {"type":"replace","find":"原文片段","replace":"新片段"} 全文替换（谨慎使用）
+
+内容编辑规则：
+- 行号以「正文」列表里每行前面的数字为准，一次最多动 8 行；不要整篇重写，除非用户明确要求。
+- 只能润色、精简、补全用户已经给出的信息，绝不能编造学历、公司、时间、数字、奖项；缺少的信息用「待补充」占位。
+- 经历行的格式是「左侧 | 中间 | 右侧」，用 " | " 分隔，删除或改写时保持这个结构。
+- 保持中文表达自然、简短，每条要点不超过 60 字。
+`;
+
+export const AGENT_SYSTEM_PROMPT = `你是简历助手。用户会用中文描述需求；默认只调整「样式与结构」，不改动用户写下的文字，只有用户明确要求改写内容时才动文字。
 
 只输出一个 JSON 对象，不要输出别的文字、不要用 markdown 代码块：
 {"reply":"一句中文说明你做了什么","actions":[动作对象...]}
@@ -369,6 +407,76 @@ export function applyAgentActions(
       }
       next = { ...next, lines };
       notes.push(`删掉 ${removed} 个空行`);
+    } else if (type === "setText") {
+      const at = lineNo(action.line, next.lines.length);
+      const text = typeof action.text === "string" ? action.text.slice(0, 2000) : "";
+      if (at < 0) {
+        skipped.push(`行号 ${String(action.line)} 不存在`);
+        continue;
+      }
+      next = {
+        ...next,
+        lines: next.lines.map((line, i) => (i === at - 1 ? { ...line, text } : line)),
+      };
+      notes.push(`改写第 ${at} 行`);
+    } else if (type === "setKind") {
+      const at = lineNo(action.line, next.lines.length),
+        kind = String(action.kind || "") as Kind;
+      const allowed: Kind[] = [...KINDS, "blank"];
+      if (at < 0 || !allowed.includes(kind)) {
+        skipped.push(`第 ${at} 行的类型改不了`);
+        continue;
+      }
+      next = {
+        ...next,
+        lines: next.lines.map((line, i) =>
+          i === at - 1 ? { ...line, kind, ...(kind !== "ordered" ? {} : { order: 1 }) } : line,
+        ),
+      };
+      notes.push(`第 ${at} 行改成 ${kindLabels[kind]}`);
+    } else if (type === "insert") {
+      const after = lineNo(action.after, next.lines.length, true),
+        kind = String(action.kind || "text") as Kind,
+        text = typeof action.text === "string" ? action.text.slice(0, 2000) : "";
+      if (after < 0) {
+        skipped.push("插入位置不合法");
+        continue;
+      }
+      const line: Line = { id: uid(), kind, text };
+      const lines = [...next.lines];
+      lines.splice(after, 0, line);
+      next = { ...next, lines };
+      notes.push(
+        after === 0
+          ? `在最前面插入一行${kindLabels[kind]}`
+          : `在第 ${after} 行后插入一行${kindLabels[kind]}`,
+      );
+    } else if (type === "remove") {
+      const at = lineNo(action.line, next.lines.length);
+      if (at < 0) {
+        skipped.push(`行号 ${String(action.line)} 不存在`);
+        continue;
+      }
+      next = { ...next, lines: next.lines.filter((_, i) => i !== at - 1) };
+      notes.push(`删除第 ${at} 行`);
+    } else if (type === "replace") {
+      const find = typeof action.find === "string" ? action.find : "",
+        to = typeof action.replace === "string" ? action.replace.slice(0, 2000) : "";
+      if (!find) {
+        skipped.push("替换缺少原文");
+        continue;
+      }
+      let count = 0;
+      next = {
+        ...next,
+        lines: next.lines.map((line) => {
+          if (!line.text.includes(find)) return line;
+          count += line.text.split(find).length - 1;
+          return { ...line, text: line.text.split(find).join(to) };
+        }),
+      };
+      if (!count) skipped.push(`没找到「${find}」`);
+      else notes.push(`替换「${find}」共 ${count} 处`);
     } else {
       skipped.push(`不支持的动作「${type}」`);
     }

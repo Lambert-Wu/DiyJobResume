@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  AGENT_CONTENT_PROMPT,
   AGENT_SYSTEM_PROMPT,
   acceptNotice,
   applyAgentActions,
@@ -214,8 +215,9 @@ export function AgentPanel({
     onClearPreview();
     const system =
       AGENT_SYSTEM_PROMPT +
-      "\n\n当前简历排版参数：\n" +
-      describeDoc(doc, pageCount);
+      AGENT_CONTENT_PROMPT +
+      "\n\n当前简历参数与正文：\n" +
+      describeDoc(doc, pageCount, true);
     const controller = new AbortController(),
       timer = window.setTimeout(() => controller.abort(), 90000);
     try {
@@ -235,14 +237,6 @@ export function AgentPanel({
           actions: reply.actions,
         });
         if (applied.notes.length) onPreview(applied.doc);
-        else
-          setTurns((all) => [
-            ...all,
-            {
-              role: "assistant",
-              text: "模型给的动作都没法执行，所以右侧没有预览。",
-            },
-          ]);
       }
     } catch (e) {
       setError(errorText(e));
@@ -295,19 +289,7 @@ export function AgentPanel({
         pages = measurePages(current);
       }
       const after = measurePages(current);
-      if (!notes.length) {
-        setTurns((all) => [
-          ...all,
-          {
-            role: "assistant",
-            text:
-              before <= 1
-                ? "现在就是 1 页，不用压缩。"
-                : "模型这次没给出可执行的压缩动作，换个说法再试？",
-          },
-        ]);
-        return;
-      }
+      if (!notes.length) return;
       setPending({
         result: current,
         notes: [`页数：${before} 页 → ${after} 页`, ...notes],
@@ -320,8 +302,8 @@ export function AgentPanel({
           role: "assistant",
           text:
             after <= 1
-              ? `已经压到 1 页（改了 ${round} 轮）。右侧是效果，点「接受」才写入。`
-              : `压到 ${after} 页，仍超过一页。可以先应用看看，或者再点一次继续压。`,
+              ? `已压到 1 页（${round} 轮）`
+              : `压到 ${after} 页，仍超过一页`,
         },
       ]);
     } catch (e) {
@@ -340,20 +322,12 @@ export function AgentPanel({
     onApply(next);
     onClearPreview();
     registerPreviewApi(null);
-    setTurns((all) => [
-      ...all,
-      { role: "assistant", text: "已接受并写进简历，按 Ctrl+Z 可以撤销。" },
-    ]);
     setPending(null);
   };
   const reject = () => {
     if (!pending) return;
     onClearPreview();
     registerPreviewApi(null);
-    setTurns((all) => [
-      ...all,
-      { role: "assistant", text: "已放弃这次改动，简历保持原样。" },
-    ]);
     setPending(null);
   };
 
@@ -448,8 +422,8 @@ export function AgentPanel({
               onChange={(e) => setAgreed(e.target.checked)}
             />
             <span>
-              我了解：点发送时，<b>排版参数和板块标题</b>
-              会发送到上面的地址（正文不会发送）；Key 只存在本机浏览器。
+              我了解：点发送时，<b>排版参数、板块标题和简历正文</b>
+              会发送到上面的地址，以便它改写内容。Key 只存在本机浏览器。
             </span>
           </label>
           <div className="agent-setup-actions">
@@ -511,7 +485,6 @@ export function AgentPanel({
                     已跳过：{pending.skipped.join("；")}
                   </p>
                 )}
-                <p className="agent-skip">右侧已经是改完的效果，你看着决定。</p>
                 <div className="agent-plan-actions">
                   <button className="primary" onClick={accept}>
                     接受
@@ -529,25 +502,18 @@ export function AgentPanel({
         )}
       </div>
 
-      <div className="agent-quick">
-        {pageCount > 1 ? (
-          <>
-            <button
-              disabled={busy}
-              onClick={() => void fitOnePage()}
-              title="自动测量页数，一轮不够就继续压，最多三轮"
-            >
-              <Minimize2 size={13} />
-              压到一页
-            </button>
-            <span>当前 {pageCount} 页</span>
-          </>
-        ) : (
-          <span className="agent-quick-done">
-            已经排进 1 页
-          </span>
-        )}
-      </div>
+      {pageCount > 1 && (
+        <div className="agent-quick">
+          <button
+            disabled={busy}
+            onClick={() => void fitOnePage()}
+            title="自动测量页数，一轮不够就继续压，最多三轮"
+          >
+            <Minimize2 size={13} />
+            压到一页
+          </button>
+        </div>
+      )}
 
       <form
         className="agent-input"
