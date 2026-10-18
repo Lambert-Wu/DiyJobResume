@@ -2623,3 +2623,8 @@ a {
     display: none;
   }
 }
+@media (max-width: 1120px) {
+  .app-header .save-state {
+    display: none;
+  }
+}
