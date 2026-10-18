@@ -38,6 +38,7 @@ import {
   uid,
   paginate,
   moveGroupToBoundary,
+  snapToBlockBoundary,
   groupEnd,
 } from "./flow";
 import type {
@@ -1129,11 +1130,11 @@ export default function Studio() {
     const lines = ref.current.lines,
       at = lines.findIndex((l) => l.id === target);
     if (at < 0) return;
-    const next = moveGroupToBoundary(
-      ref.current,
-      dragId,
-      after ? groupEnd(lines, at) : at,
-    );
+    let boundary = after ? groupEnd(lines, at) : at;
+    // 板块标题只能落在整块之间，不许插进别人内容里
+    if (lines.find((l) => l.id === dragId)?.kind === "section")
+      boundary = snapToBlockBoundary(lines, boundary, dragId);
+    const next = moveGroupToBoundary(ref.current, dragId, boundary);
     if (next !== ref.current) historyUpdate(next);
   };
   const backspaceLine = (id: string) => {

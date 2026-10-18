@@ -431,6 +431,30 @@ export function moveGroupToBoundary(
   rest.splice(boundary > end ? boundary - part.length : boundary, 0, ...part);
   return { ...doc, lines: rest };
 }
+// 每一块（section/entry 连同它的内容）的起始下标，末尾也算一个插入点
+export function blockStarts(lines: Line[]): number[] {
+  const starts: number[] = [];
+  for (let i = 0; i < lines.length; i = groupEnd(lines, i)) starts.push(i);
+  starts.push(lines.length);
+  return starts;
+}
+// 把插入点吸附到最近的「块与块之间」，避免板块标题插进别人的内容里。
+// 传 id 时会跳过被拖那一块自己的区间，免得「吸附回原位」看起来像没反应。
+export function snapToBlockBoundary(
+  lines: Line[],
+  boundary: number,
+  id = "",
+): number {
+  const from = id ? lines.findIndex((l) => l.id === id) : -1,
+    end = from >= 0 ? groupEnd(lines, from) : -1;
+  const starts = blockStarts(lines).filter(
+    (start) => from < 0 || start < from || start >= end,
+  );
+  let best = starts[0] ?? 0;
+  for (const start of starts)
+    if (Math.abs(start - boundary) < Math.abs(best - boundary)) best = start;
+  return best;
+}
 const numeric = (v: unknown, d: number, min: number, max: number) =>
   typeof v === "number" && Number.isFinite(v)
     ? Math.min(max, Math.max(min, v))
