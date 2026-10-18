@@ -117,6 +117,14 @@ export function looksLikeMarkdown(text: string) {
   return /(^|\n)\s{0,3}#{1,6}\s+\S/.test(text);
 }
 
+// 判断用户发来的这一段是不是「整份简历」而不是一句指令。
+// 用来在模型没给出方案时兜底：本地直接按规则排，不让用户白等。
+export function looksLikeResumeBlock(text: string) {
+  const rows = text.split("\n").filter((row) => row.trim());
+  if (rows.length < 5) return false;
+  return /【.+?】/.test(text) || /[►▶]/.test(text) || /(^|\n)\s*[·•]/.test(text);
+}
+
 // markdown 写法交给 flow 的解析器（同一套规则，不重复实现）
 export function contentToLines(text: string): Line[] {
   return looksLikeMarkdown(text) ? parseMarkdown(text) : textToLines(text);

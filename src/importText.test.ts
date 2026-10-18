@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { contentToLines, looksLikeMarkdown, textToLines } from "./importText";
+import {
+  contentToLines,
+  looksLikeMarkdown,
+  looksLikeResumeBlock,
+  textToLines,
+} from "./importText";
 
 const RAW = `李景阳
 电话：18319206783   ｜   邮箱：1406083391@qq.com
@@ -61,6 +66,24 @@ describe("pasted resume text", () => {
     expect(text).toContain("2023.12");
     expect(text).not.toContain("►");
     expect(text).not.toContain("【");
+  });
+
+  it("tells a pasted resume apart from a short instruction", () => {
+    expect(looksLikeResumeBlock(RAW)).toBe(true);
+    expect(looksLikeResumeBlock("把行距调大一点")).toBe(false);
+    expect(
+      looksLikeResumeBlock("李景阳\n电话：123\n· 一条\n· 两条\n· 三条"),
+    ).toBe(true);
+  });
+
+  it("tells a pasted resume apart from a short instruction", () => {
+    expect(looksLikeResumeBlock(RAW)).toBe(true);
+    expect(looksLikeResumeBlock("把行距调大一点")).toBe(false);
+    expect(
+      looksLikeResumeBlock(
+        "李景阳\n电话：123\n· 一条\n· 两条\n· 三条",
+      ),
+    ).toBe(true);
   });
 
   it("accepts markdown output as well", () => {

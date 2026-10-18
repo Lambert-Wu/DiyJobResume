@@ -23,6 +23,7 @@ import {
   saveAgentConfig,
 } from "./agent";
 import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
+import { looksLikeResumeBlock } from "./importText";
 import type { Resume } from "./flow";
 
 const EXAMPLES = [
@@ -211,6 +212,30 @@ export function AgentPanel({
     const text = input.trim();
     if (!text || busy) return;
     if (!config.apiKey.trim() || !config.model.trim()) {
+      // 没配接口也别让整段粘贴白费：这份明显是简历时，本地先排一版给用户看
+      if (looksLikeResumeBlock(text)) {
+        setInput("");
+        setTurns((all) => [
+          ...all,
+          { role: "user", text },
+          {
+            role: "assistant",
+            text: "还没配置接口，我先用本地规则排了一版，你看看合不合适。",
+          },
+        ]);
+        const actions = [{ type: "setContent", text }],
+          applied = applyAgentActions(doc, actions);
+        if (applied.notes.length) {
+          setPending({
+            actions,
+            notes: applied.notes,
+            skipped: applied.skipped,
+            turnAt: turns.length + 1,
+          });
+          onPreview(applied.doc);
+        }
+        return;
+      }
       setSetupOpen(true);
       setError("先填好接口地址、模型名和 Key，再点保存。");
       return;
@@ -253,6 +278,19 @@ export function AgentPanel({
           turnAt: assistantAt,
         });
         if (applied.notes.length) onPreview(applied.doc);
+      } else if (looksLikeResumeBlock(text)) {
+        // 模型没给方案，但这段明显是整份简历 → 本地按规则先排出来给用户看
+        const actions = [{ type: "setContent", text }],
+          applied = applyAgentActions(doc, actions);
+        if (applied.notes.length) {
+          setPending({
+            actions,
+            notes: [...applied.notes, "助手没给方案，已用本地规则直接排版"],
+            skipped: applied.skipped,
+            turnAt: assistantAt,
+          });
+          onPreview(applied.doc);
+        }
       }
     } catch (e) {
       setError(errorText(e));
