@@ -50,12 +50,11 @@ function loadTurns(docId: string): AgentTurn[] {
               (t.role === "user" || t.role === "assistant") &&
               typeof t.text === "string",
           )
-          .slice(-30)
           .map((t) => ({
             role: t.role,
             text: t.text,
             notes: Array.isArray(t.notes)
-              ? t.notes.filter((n) => typeof n === "string").slice(0, 20)
+              ? t.notes.filter((n) => typeof n === "string")
               : undefined,
             rejected: t.rejected === true || undefined,
           }))
@@ -125,10 +124,7 @@ export function AgentPanel({
 
   useEffect(() => {
     try {
-      localStorage.setItem(
-        turnsKey(docId),
-        JSON.stringify(turns.slice(-30)),
-      );
+      localStorage.setItem(turnsKey(docId), JSON.stringify(turns));
     } catch {
       /* 存不下也不影响使用 */
     }

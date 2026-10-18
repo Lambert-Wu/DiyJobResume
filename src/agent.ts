@@ -168,9 +168,6 @@ export const AGENT_SYSTEM_PROMPT = `你是简历助手。用户会用中文描�
 - 你可以看到这段对话的历史，用户说“再紧一点”“刚才那个模板”“回到之前那样”时，按历史里已经应用过的改动为基准继续调整。
 - 如果请求和这份简历完全无关（闲聊、写代码等），actions 返回空数组，并在 reply 里说明你只处理这份简历。`;
 
-const HISTORY_TURNS = 24;
-const HISTORY_CHARS = 6000;
-
 function turnSuffix(turn: AgentTurn) {
   if (turn.role !== "assistant") return "";
   if (turn.rejected) return "\n（这一版方案用户没有接受，简历保持原样）";
@@ -179,22 +176,14 @@ function turnSuffix(turn: AgentTurn) {
   return "";
 }
 
-// 把历史对话整理成 messages：保留最近若干轮，余额按字符数截断；
+// 把历史对话整理成 messages：整段历史都给模型（不按条数或字符截断），
 // 助手的每一轮会带上“实际改了什么”，模型才知道前后文到底发生了什么。
 export function buildAgentMessages(
   system: string,
   turns: AgentTurn[],
   input: string,
 ) {
-  const picked: AgentTurn[] = [];
-  let chars = 0;
-  for (let i = turns.length - 1; i >= 0; i--) {
-    const turn = turns[i];
-    const cost = turn.text.length + (turn.notes?.join("").length || 0);
-    if (picked.length >= HISTORY_TURNS || chars + cost > HISTORY_CHARS) break;
-    picked.unshift(turn);
-    chars += cost;
-  }
+  const picked = [...turns];
   // 历史必须以 user 开头，避免出现没有对应问题的 assistant
   while (picked.length && picked[0].role === "assistant") picked.shift();
   return [
@@ -208,14 +197,14 @@ export function buildAgentMessages(
 }
 
 // 供系统提示用的“这次会话已经做过的改动”，超出对话窗口也能记住
-export function changesDigest(turns: AgentTurn[], limit = 12) {
+export function changesDigest(turns: AgentTurn[]) {
   const out: string[] = [];
   for (const turn of turns) {
     if (turn.role !== "assistant") continue;
     if (turn.notes?.length) out.push(turn.notes.join("、"));
     else if (turn.rejected) out.push("（有一版方案被拒绝，简历未改）");
   }
-  return out.slice(-limit);
+  return out;
 }
 
 export async function requestAgent(

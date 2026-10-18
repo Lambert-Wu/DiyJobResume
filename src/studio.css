@@ -2587,3 +2587,25 @@ a {
     left: 0;
   }
 }
+
+/* 顶栏简历切换器：别被右侧按钮压住，展开时按钮也要露出来 */
+.doc-switch {
+  flex: 0 1 auto;
+  min-width: 0;
+  z-index: 3;
+}
+.doc-switch .document-name {
+  flex: 0 1 200px;
+  min-width: 72px;
+}
+.doc-toggle {
+  position: relative;
+  z-index: 2;
+  flex: none;
+}
+.header-actions {
+  flex: none;
+}
+.doc-menu {
+  top: 42px;
+}

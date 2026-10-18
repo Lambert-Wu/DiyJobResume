@@ -159,6 +159,26 @@ describe("agent conversation memory", () => {
     expect(messages[4].content).toContain("没有接受");
     expect(messages.at(-1)?.content).toBe("刚才那个不要，回到第一次");
   });
+  it("keeps the whole conversation without trimming by count", () => {
+    const turns = Array.from({ length: 80 }, (_, i) => ({
+      role: (i % 2 ? "assistant" : "user") as "user" | "assistant",
+      text: "第 " + i + " 条",
+    }));
+    const messages = buildAgentMessages("系统", turns, "继续");
+    expect(messages).toHaveLength(82);
+    expect(messages[1].content).toBe("第 0 条");
+    expect(messages.at(-2)?.content).toBe("第 79 条");
+  });
+  it("keeps the whole conversation without trimming by count", () => {
+    const turns = Array.from({ length: 80 }, (_, i) => ({
+      role: (i % 2 ? "assistant" : "user") as "user" | "assistant",
+      text: "第 " + i + " 条",
+    }));
+    const messages = buildAgentMessages("系统", turns, "继续");
+    expect(messages).toHaveLength(82);
+    expect(messages[1].content).toBe("第 0 条");
+    expect(messages.at(-2)?.content).toBe("第 79 条");
+  });
   it("never starts the history with an assistant message", () => {
     const messages = buildAgentMessages(
       "系统",
