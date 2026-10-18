@@ -60,16 +60,15 @@ export function NumericInput({
 
 // A quick click keeps native caret/selection behavior. Movement before the hold
 // threshold cancels dragging, so selecting text does not accidentally move blocks.
+// holdMs = 0 means "start dragging immediately" (used by the row handle grip).
 export function holdDrag(
   e: ReactPointerEvent,
   id: string,
   onMove: (target: string) => void,
+  holdMs = 350,
 ) {
-  if (
-    e.button !== 0 ||
-    (e.target as HTMLElement).closest("button,input,select,a")
-  )
-    return;
+  if (e.button !== 0) return;
+  if (holdMs && (e.target as HTMLElement).closest("button,input,select,a")) return;
   const handle = e.currentTarget as HTMLElement,
     startX = e.clientX,
     startY = e.clientY;
@@ -79,18 +78,21 @@ export function holdDrag(
     target?.classList.remove("drop-target");
     target = null;
   };
-  const timer = window.setTimeout(() => {
+  const activate = () => {
     active = true;
     handle.setPointerCapture(e.pointerId);
     document.body.classList.add("holding-block");
     handle.classList.add("moving-block");
+    handle.closest?.(".edit-field")?.classList.add("moving-block");
     window.getSelection()?.removeAllRanges();
-  }, 350);
+  };
+  const timer = holdMs ? window.setTimeout(activate, holdMs) : (activate(), 0);
   const cleanup = () => {
     clearTimeout(timer);
     clearTarget();
     document.body.classList.remove("holding-block");
     handle.classList.remove("moving-block");
+    handle.closest?.(".edit-field")?.classList.remove("moving-block");
     handle.removeEventListener("pointermove", move);
     handle.removeEventListener("pointerup", end);
     handle.removeEventListener("pointercancel", cancel);

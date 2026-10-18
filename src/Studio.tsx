@@ -1482,7 +1482,7 @@ export default function Studio() {
           </div>
           <div className="editor-hint">
             {mode === "simple"
-              ? "直接输入 · 选中文字设置格式 · 空行输入 / 添加内容"
+              ? "直接输入 · 选中文字设置格式 · 左侧手柄按住可拖动换位置"
               : "选中文字设置格式 · 支持一级至六级标题与列表"}
           </div>
           {mode === "md" ? (
@@ -1548,6 +1548,27 @@ export default function Studio() {
                   >
                     <div className="block-gutter">
                       <div>
+                        <button
+                          className="drag-grip"
+                          aria-label={`拖动第 ${index + 1} 行调整顺序`}
+                          title="按住拖动，调整这条的位置"
+                          onPointerDown={(e) =>
+                            holdDrag(
+                              e,
+                              line.id,
+                              (target) => {
+                                if (!target || target === line.id) return;
+                                historyUpdate(
+                                  moveGroup(ref.current, line.id, target),
+                                );
+                                flashLine(line.id);
+                              },
+                              0,
+                            )
+                          }
+                        >
+                          <GripVertical size={13} />
+                        </button>
                         <button
                           aria-label={`在简历中定位第 ${index + 1} 行`}
                           title="在简历中定位"
