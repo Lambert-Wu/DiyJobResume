@@ -654,6 +654,34 @@ a {
 .paper-row.drop-target {
   border-top: 3px solid #b87559;
 }
+/* 光标镜像：左边编辑区光标落在哪个字，右边纸张同一个字上也标出来 */
+.caret-word,
+.caret-bar {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 30;
+  border-radius: 2px;
+}
+.caret-word {
+  background: #b8755926;
+  box-shadow: 0 0 0 1px #b8755940;
+}
+.caret-bar {
+  width: 2px;
+  background: #b87559;
+  border-radius: 1px;
+  animation: caret-mark-pulse 1.2s ease-in-out infinite;
+}
+@keyframes caret-mark-pulse {
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
 /* 从左侧列表定位过来时，正文对应行短暂亮一下 */
 .paper-row.flash-row {
   animation: row-flash 1.1s ease-out;
@@ -1353,6 +1381,10 @@ a {
   }
   .floating-picture {
     outline: none !important;
+  }
+  .caret-word,
+  .caret-bar {
+    display: none !important;
   }
   .flow-row {
     caret-color: transparent;

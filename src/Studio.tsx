@@ -120,6 +120,34 @@ function placeCursor(el: HTMLElement, offset: number) {
   selection?.removeAllRanges();
   selection?.addRange(range);
 }
+function textRangeOf(root: HTMLElement, start: number, end: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode(),
+    pos = 0,
+    startNode: Node | null = null,
+    startOffset = 0,
+    endNode: Node | null = null,
+    endOffset = 0;
+  while (node) {
+    const len = node.textContent?.length || 0;
+    if (!startNode && start <= pos + len) {
+      startNode = node;
+      startOffset = start - pos;
+    }
+    if (startNode && end <= pos + len) {
+      endNode = node;
+      endOffset = Math.max(startOffset, end - pos);
+      break;
+    }
+    pos += len;
+    node = walker.nextNode();
+  }
+  if (!startNode || !endNode) return null;
+  const range = document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  return range;
+}
 function SimpleInput({
   line,
   index,
@@ -423,6 +451,10 @@ export default function Studio() {
   const pendingCaret = useRef<{ id: string; offset: number } | null>(null);
   const flashTimer = useRef(0);
   const mdSyncing = useRef(false);
+  const markWord = useRef<HTMLDivElement>(null),
+    markBar = useRef<HTMLDivElement>(null);
+  const caretMark = useRef<{ id: string; offset: number } | null>(null);
+  const markTimer = useRef(0);
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const contactId = view.lines.find(
     (line, index) =>
@@ -721,6 +753,102 @@ export default function Studio() {
     setSelected(id);
     scrollPaperTo(id);
   };
+  // 光标同步：左边编辑器里光标在哪，右边纸张同一个字上也标出来
+  const hideCaretMark = () => {
+    if (markWord.current) markWord.current.style.display = "none";
+    if (markBar.current) markBar.current.style.display = "none";
+  };
+  const clearCaretMark = () => {
+    caretMark.current = null;
+    hideCaretMark();
+  };
+  const showCaretMark = (id: string, offset: number) => {
+    const row = workspace.current?.querySelector<HTMLElement>(
+        `[data-edit="${id}"]`,
+      ),
+      word = markWord.current,
+      bar = markBar.current;
+    caretMark.current = { id, offset };
+    if (!row || !word || !bar) return hideCaretMark();
+    const text = row.textContent || "";
+    if (!text) return hideCaretMark();
+    const at = Math.max(0, Math.min(offset, text.length));
+    const boundary = /[\s\u3000，。、；：！？,.;:!?()（）【】\[\]{}<>|/·"'“”‘’]/;
+    const isWord = (c: string) => c && !boundary.test(c);
+    let from = at,
+      to = at;
+    while (from > 0 && isWord(text[from - 1])) from--;
+    while (to < text.length && isWord(text[to])) to++;
+    if (from === to) {
+      from = Math.min(at, Math.max(0, text.length - 1));
+      to = Math.min(text.length, from + 1);
+    }
+    const wordRect = textRangeOf(row, from, to)?.getBoundingClientRect(),
+      caretRect = textRangeOf(row, at, at)?.getBoundingClientRect();
+    if (!wordRect) return hideCaretMark();
+    Object.assign(word.style, {
+      display: "block",
+      left: wordRect.left + "px",
+      top: wordRect.top + "px",
+      width: Math.max(2, wordRect.width) + "px",
+      height: wordRect.height + "px",
+    });
+    Object.assign(bar.style, {
+      display: "block",
+      left: (caretRect && caretRect.height ? caretRect.left : wordRect.left) + "px",
+      top: (caretRect && caretRect.height ? caretRect.top : wordRect.top) + "px",
+      height: (caretRect && caretRect.height ? caretRect.height : wordRect.height) + "px",
+    });
+  };
+  // Markdown 模式下把 textarea 光标换算成「第几行 + 第几个可见字符」
+  const mdCaretSpot = () => {
+    const el = mdRef.current,
+      lines = ref.current.lines;
+    if (!el || !lines.length || document.activeElement !== el) return null;
+    const caret = el.selectionStart ?? 0;
+    let start = 0,
+      at = 0,
+      within = 0;
+    for (let i = 0; i < lines.length; i++) {
+      at = i;
+      const md = toMarkdown([lines[i]]);
+      if (caret <= start + md.length) {
+        within = Math.max(0, caret - start);
+        break;
+      }
+      start += md.length + 1;
+    }
+    const visible = toMarkdown([lines[at]])
+      .slice(0, within)
+      .replace(/^(#{1,6}|[-*+]|\d+\.)\s+/, "")
+      .replace(/\*\*|__|~~|`|<u>|<\/u>|\*|_/g, "").length;
+    return { id: lines[at].id, offset: visible };
+  };
+  useEffect(() => {
+    const sync = () => {
+      if (mode === "simple") {
+        const holder = (
+          document.activeElement as HTMLElement | null
+        )?.closest?.("[data-simple]") as HTMLElement | null;
+        if (!holder?.dataset.simple) return clearCaretMark();
+        showCaretMark(holder.dataset.simple, cursorOffset(holder) ?? 0);
+        return;
+      }
+      const spot = mdCaretSpot();
+      if (spot) showCaretMark(spot.id, spot.offset);
+      else clearCaretMark();
+    };
+    document.addEventListener("selectionchange", sync);
+    return () => {
+      document.removeEventListener("selectionchange", sync);
+      clearCaretMark();
+    };
+  }, [mode]);
+  // 重新排版或缩放后，标记得重新按新位置算一遍
+  useEffect(() => {
+    const mark = caretMark.current;
+    if (mark) showCaretMark(mark.id, mark.offset);
+  }, [pages, zoom]);
   const addLine = (
     after: string,
     kind: Kind = "text",
@@ -1496,6 +1624,15 @@ export default function Studio() {
               setHoverGroup(row ? sectionStart(row.dataset.line!) : "");
             }}
             onMouseLeave={() => setHoverGroup("")}
+            onScroll={() => {
+              if (!caretMark.current) return;
+              hideCaretMark();
+              window.clearTimeout(markTimer.current);
+              markTimer.current = window.setTimeout(() => {
+                const mark = caretMark.current;
+                if (mark) showCaretMark(mark.id, mark.offset);
+              }, 240);
+            }}
             className="paper-workspace"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
@@ -1926,6 +2063,8 @@ export default function Studio() {
           模板与内容
         </button>
       </nav>
+      <div ref={markWord} className="caret-word" aria-hidden="true" />
+      <div ref={markBar} className="caret-bar" aria-hidden="true" />
       <SelectionTools
         lines={doc.lines}
         onSource={(value, start, end) => {
