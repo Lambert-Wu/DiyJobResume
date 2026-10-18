@@ -664,28 +664,30 @@ export default function Studio() {
     setFlash(id);
     flashTimer.current = window.setTimeout(() => setFlash(""), 1200);
   };
-  const revealInPaper = (id: string) => {
+  const scrollPaperTo = (id: string) => {
+    const scroller = workspace.current,
+      row = scroller?.querySelector<HTMLElement>(`[data-line="${id}"]`);
+    if (!scroller || !row) return;
+    const box = scroller.getBoundingClientRect(),
+      at = row.getBoundingClientRect();
+    // 已经在视野里就不动，避免编辑时来回抖
+    if (at.top >= box.top + 8 && at.bottom <= box.bottom - 8) return;
+    scroller.scrollTo({
+      top: Math.max(
+        0,
+        scroller.scrollTop + at.top - box.top - (box.height - at.height) / 2,
+      ),
+      behavior: "smooth",
+    });
+  };
+  const revealInPaper = (id: string, switchView = false) => {
     setSelected(id);
     setPicSelection("");
     flashLine(id);
-    const scrollToRow = () => {
-      const scroller = workspace.current,
-        row = scroller?.querySelector<HTMLElement>(`[data-line="${id}"]`);
-      if (!scroller || !row) return;
-      const box = scroller.getBoundingClientRect(),
-        at = row.getBoundingClientRect();
-      scroller.scrollTo({
-        top: Math.max(
-          0,
-          scroller.scrollTop + at.top - box.top - (box.height - at.height) / 2,
-        ),
-        behavior: "smooth",
-      });
-    };
-    if (window.innerWidth <= 900 && mobile !== "preview") {
+    if (switchView && window.innerWidth <= 900 && mobile !== "preview") {
       setMobile("preview");
-      window.setTimeout(scrollToRow, 90);
-    } else scrollToRow();
+      window.setTimeout(() => scrollPaperTo(id), 90);
+    } else scrollPaperTo(id);
   };
   const addLine = (
     after: string,
@@ -1242,6 +1244,11 @@ export default function Studio() {
                     className={`edit-field field-${line.kind} ${selected === line.id ? "active" : ""} ${hovered === line.id ? "hovered" : ""} ${flash === line.id ? "flash-line" : ""}`}
                     onMouseEnter={() => setHovered(line.id)}
                     onMouseLeave={() => setHovered("")}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("button")) return;
+                      setSelected(line.id);
+                      scrollPaperTo(line.id);
+                    }}
                     onPointerDown={(e) =>
                       holdDrag(e, line.id, (target) =>
                         historyUpdate(moveGroup(ref.current, line.id, target)),
@@ -1253,7 +1260,7 @@ export default function Studio() {
                         <button
                           aria-label={`在简历中定位第 ${index + 1} 行`}
                           title="在简历中定位"
-                          onClick={() => revealInPaper(line.id)}
+                          onClick={() => revealInPaper(line.id, true)}
                         >
                           <Crosshair size={13} />
                         </button>
@@ -1269,7 +1276,10 @@ export default function Studio() {
                     <SimpleInput
                       line={line}
                       index={index}
-                      onFocus={() => setSelected(line.id)}
+                      onFocus={() => {
+                        setSelected(line.id);
+                        revealInPaper(line.id);
+                      }}
                       onChange={(value) => updateLine(line.id, value)}
                       onEnter={() =>
                         addLine(
