@@ -2374,7 +2374,7 @@ export default function Studio() {
                       className={`mini-paper mini-${t.id}`}
                       style={{ "--mini-accent": t.color } as CSSProperties}
                     >
-                      <strong>张小明</strong>
+                      <strong>炒肉多</strong>
                       <small>138 0000 2468 | zhangxiaoming@example.com</small>
                       {["教育背景", "实习经历", "项目经历", "专业技能"].map(
                         (s, i) => (

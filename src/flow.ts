@@ -222,7 +222,7 @@ export const demo = demoFor("blue");
 export function initialResume(template: Template = "blue"): Resume {
   return {
     version: 2,
-    name: "张小明的简历",
+    name: "炒肉多的简历",
     template,
     lines: parseMarkdown(demoFor(template)),
     settings: {
