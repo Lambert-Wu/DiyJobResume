@@ -232,8 +232,78 @@ export function reviewStructure(lines: Line[]): Line[] {
   return cleaned;
 }
 
+const CONTACT_LINE = /@|电话|手机|邮箱|微信|现居|住址|地址/;
+const ONLY_DATE = /^[\s\d.年月日\-–—/]+$/;
+
+const joinContact = (left: string, right: string) =>
+  `${left.replace(/[｜|\s]+$/, "")} | ${right.replace(/^[｜|\s]+/, "")}`;
+
+// ⑤ 重新排格式（第二遍）：把联系方式并成一行、补全经历行的分栏、
+// 把「正文里明显是经历行」的认出来、清掉空要点。只调整结构，不改字。
+export function reformat(lines: Line[]): Line[] {
+  let contact: Line | null = null;
+  const merged: Line[] = [];
+  for (const item of lines) {
+    const isContact =
+      item.kind === "text" &&
+      CONTACT_LINE.test(item.text) &&
+      !DATE.test(item.text);
+    if (isContact) {
+      if (!contact) {
+        contact = { ...item, text: item.text.replace(/\s*[｜|]\s*/g, " | ") };
+        merged.push(contact);
+      } else {
+        contact.text = joinContact(
+          contact.text,
+          item.text.replace(/\s*[｜|]\s*/g, " | "),
+        );
+      }
+      continue;
+    }
+    contact = null;
+    merged.push(item);
+  }
+
+  const fixed: Line[] = [];
+  for (const item of merged) {
+    const previous = fixed[fixed.length - 1];
+    // 只有日期的行，接到上一条经历行右边，避免多出一行
+    if (
+      previous?.kind === "entry" &&
+      item.kind === "entry" &&
+      ONLY_DATE.test(item.text)
+    ) {
+      previous.text = `${previous.text.replace(/\s*\|\s*$/, "")} | ${item.text.trim()}`;
+      continue;
+    }
+    // 正文里带着日期和两段以上内容的，基本就是经历行
+    if (
+      item.kind === "text" &&
+      DATE.test(item.text) &&
+      cellsOf(item.text).length >= 2
+    ) {
+      fixed.push({ ...item, kind: "entry", text: entryText(item.text) });
+      continue;
+    }
+    if (item.kind === "entry") {
+      fixed.push({ ...item, text: entryText(item.text) });
+      continue;
+    }
+    fixed.push(item);
+  }
+
+  return fixed
+    .filter((item) => item.text.trim() !== "")
+    .map((item) => ({
+      ...item,
+      text: item.text.trim().replace(/\s{2,}/g, " "),
+    }));
+}
+
 export function textToLines(raw: string): Line[] {
-  return reviewStructure(reviewLines(toLines(expand(rowsOf(raw)))));
+  return reformat(
+    reviewStructure(reviewLines(toLines(expand(rowsOf(raw))))),
+  );
 }
 
 // 分步执行，供界面显示「排版进行到哪一步」
@@ -253,7 +323,10 @@ export function* layoutSteps(raw: string): Generator<LayoutStage> {
   yield { label: `整理要点与断行（${lines.length} 行）`, lines };
 
   lines = reviewStructure(lines);
-  yield { label: `复核格式（${lines.length} 行）`, lines };
+  yield { label: `姓名、联系方式与板块归位（${lines.length} 行）`, lines };
+
+  lines = reformat(lines);
+  yield { label: `重新排格式（${lines.length} 行）`, lines };
 
   yield { label: "按当前模板生成排版", lines };
 }

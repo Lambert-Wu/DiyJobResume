@@ -29,9 +29,10 @@ describe("pasted resume text", () => {
     const lines = textToLines(RAW);
     expect(lines[0]).toMatchObject({ kind: "name", text: "李景阳" });
     expect(lines[1].kind).toBe("text");
+    // 两行联系方式会合并成一行，避免页眉挤成两条
     expect(lines[1].text).toContain("18319206783");
-    expect(lines[2].kind).toBe("text");
-    expect(lines[2].text).toContain("现居");
+    expect(lines[1].text).toContain("现居");
+    expect(lines[2]).toMatchObject({ kind: "section", text: "个人总结" });
   });
 
   it("recognizes 【section】 headings and bullet markers", () => {
@@ -141,9 +142,38 @@ describe("pasted resume text", () => {
     expect(ordered.map((line) => line.order)).toEqual([1, 2]);
   });
 
+  it("merges consecutive contact lines into one", () => {
+    const lines = textToLines(
+      "李景阳\n电话：138 ｜ 邮箱：a@b.com\n现居：东莞 ｜ 本科\n【个人总结】\n· 一条",
+    );
+    const contacts = lines.filter(
+      (line) => line.kind === "text" && line.text.includes("138"),
+    );
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0].text).toContain("现居");
+  });
+
+  it("attaches a date-only line to the entry above it", () => {
+    const lines = textToLines(
+      "李景阳\n【工作经历】\n► 某公司   工程师\n2024.01 – 2024.12\n· 做了点事",
+    );
+    const entry = lines.find((line) => line.kind === "entry");
+    expect(entry?.text).toBe("某公司 | 工程师 | 2024.01 – 2024.12");
+  });
+
+  it("recognizes an entry written as plain body text", () => {
+    const lines = textToLines(
+      "李景阳\n【工作经历】\n某公司   工程师   2023.03 – 2024.01\n· 做了点事",
+    );
+    expect(lines.find((line) => line.kind === "entry")?.text).toBe(
+      "某公司 | 工程师 | 2023.03 – 2024.01",
+    );
+  });
+
   it("reports layout stages and ends with the final lines", () => {
     const stages = Array.from(layoutSteps(RAW));
-    expect(stages).toHaveLength(5);
+    expect(stages).toHaveLength(6);
+    expect(stages.map((stage) => stage.label).join(" ")).toContain("重新排格式");
     expect(stages[0].label).toContain("清洗文字");
     const brief = (list: { kind: string; text: string }[]) =>
       list.map((line) => [line.kind, line.text]);

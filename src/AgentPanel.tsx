@@ -345,11 +345,14 @@ export function AgentPanel({
       let index = 0,
         last = doc;
       for (const stage of layoutSteps(text)) {
-        await wait(index++ ? 200 : 60);
+        // 每步都留出时间让人看清，别一闪而过
+        await wait(index++ ? 420 : 200);
         setProgress((all) => [...all, stage.label]);
         last = { ...doc, lines: stage.lines };
       }
+      await wait(320);
       onApply(last);
+      setProgress((all) => [...all, `排版完成（${last.lines.length} 行）`]);
       setLayoutResult({ before, after: last, total: last.lines.length });
     } catch (e) {
       setError(errorText(e));
