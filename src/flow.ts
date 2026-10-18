@@ -72,7 +72,7 @@ export const templates: {
 }[] = [
   {
     id: "blue",
-    name: "经典蓝",
+    name: "炒肉多经典",
     desc: "居中表头 · 蓝色细线 · 紧凑清晰",
     color: "#0756a5",
   },
