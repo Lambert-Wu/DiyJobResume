@@ -1437,6 +1437,26 @@ export default function Studio() {
           {saved}
         </span>
         <div className="header-actions">
+          <div className="header-history">
+            <button
+              className="icon-button"
+              title="撤销 Ctrl+Z"
+              aria-label="撤销"
+              disabled={!past.length}
+              onClick={undo}
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              className="icon-button"
+              title="重做 Ctrl+Shift+Z"
+              aria-label="重做"
+              disabled={!future.length}
+              onClick={redo}
+            >
+              <Redo2 size={18} />
+            </button>
+          </div>
           <button
             className="header-mode"
             title={editorOpen ? "收起左侧编辑区，让纸张更宽" : "展开左侧编辑区"}
@@ -1590,22 +1610,6 @@ export default function Studio() {
               </button>
             </div>
             <div className="history-buttons">
-              <button
-                title="撤销 Ctrl+Z"
-                aria-label="撤销"
-                disabled={!past.length}
-                onClick={undo}
-              >
-                <Undo2 size={17} />
-              </button>
-              <button
-                title="重做 Ctrl+Shift+Z"
-                aria-label="重做"
-                disabled={!future.length}
-                onClick={redo}
-              >
-                <Redo2 size={17} />
-              </button>
               <button
                 title="收起编辑区"
                 aria-label="收起编辑区"

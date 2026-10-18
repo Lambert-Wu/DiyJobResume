@@ -2395,3 +2395,23 @@ a {
   border-inline: 1px solid #e2ded8;
   background: #f2efea;
 }
+.header-history {
+  display: flex;
+  gap: 2px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid #e4e0d9;
+}
+.header-history .icon-button:disabled {
+  opacity: 0.35;
+}
+.header-history {
+  display: flex;
+  gap: 2px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid #e4e0d9;
+}
+.header-history .icon-button:disabled {
+  opacity: 0.35;
+}
