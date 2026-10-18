@@ -493,6 +493,7 @@ export default function Studio() {
   const [cssOpen, setCssOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
+  const [editorOpen, setEditorOpen] = useState(true);
   const pinnedPreview = useRef(false);
   const agentPreviewApi = useRef<{
     accept: () => void;
@@ -1417,12 +1418,25 @@ export default function Studio() {
         <div className="header-actions">
           <button
             className="header-mode"
-            title={libraryOpen ? "收起右侧的简历样式面板" : "展开右侧的简历样式面板"}
+            title={editorOpen ? "收起左侧编辑区，让纸张更宽" : "展开左侧编辑区"}
+            aria-label="编辑区"
+            aria-pressed={editorOpen}
+            onClick={() => setEditorOpen((open) => !open)}
+          >
+            <PanelLeft size={16} />
+            <span>编辑区</span>
+          </button>
+          <button
+            className="header-mode"
+            title={libraryOpen && !agentOpen ? "收起右侧的简历样式面板" : "展开简历样式面板"}
             aria-label="简历样式"
-            aria-pressed={libraryOpen}
+            aria-pressed={libraryOpen && !agentOpen}
             onClick={() => {
-              setAgentOpen(false);
-              setLibraryOpen((open) => !open);
+              if (libraryOpen && !agentOpen) setLibraryOpen(false);
+              else {
+                setAgentOpen(false);
+                setLibraryOpen(true);
+              }
             }}
           >
             <PanelRight size={16} />
@@ -1433,7 +1447,15 @@ export default function Studio() {
             title="打开 AI 排版助手：用一句话让它调排版"
             aria-label="排版助手"
             aria-pressed={agentOpen}
-            onClick={() => setAgentOpen(!agentOpen)}
+            onClick={() => {
+              if (agentOpen) {
+                setAgentOpen(false);
+                setLibraryOpen(true);
+              } else {
+                setAgentOpen(true);
+                setLibraryOpen(false);
+              }
+            }}
           >
             <Sparkles size={16} />
             <span>AI 排版</span>
@@ -1523,6 +1545,8 @@ export default function Studio() {
         </div>
       )}
       <div className="workbench">
+        {editorOpen && (
+          <>
         <aside
           className={`editor-panel ${mobile === "editor" ? "mobile-active" : ""}`}
         >
@@ -1559,6 +1583,13 @@ export default function Studio() {
                 onClick={redo}
               >
                 <Redo2 size={17} />
+              </button>
+              <button
+                title="收起编辑区"
+                aria-label="收起编辑区"
+                onClick={() => setEditorOpen(false)}
+              >
+                <PanelLeft size={16} />
               </button>
             </div>
           </div>
@@ -1702,6 +1733,8 @@ export default function Studio() {
         >
           <GripVertical size={12} />
         </div>
+          </>
+        )}
         <main
           className={`preview-panel ${mobile === "preview" ? "mobile-active" : ""}`}
         >
@@ -2292,7 +2325,10 @@ export default function Studio() {
       <nav className="mobile-nav">
         <button
           className={mobile === "editor" ? "active" : ""}
-          onClick={() => setMobile("editor")}
+          onClick={() => {
+            setEditorOpen(true);
+            setMobile("editor");
+          }}
         >
           <PanelLeft size={17} />
           编辑
@@ -2306,7 +2342,10 @@ export default function Studio() {
         </button>
         <button
           className={mobile === "library" ? "active" : ""}
-          onClick={() => setMobile("library")}
+          onClick={() => {
+            if (!agentOpen) setLibraryOpen(true);
+            setMobile("library");
+          }}
         >
           <PanelRight size={17} />
           模板与内容
