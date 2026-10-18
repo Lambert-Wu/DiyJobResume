@@ -450,6 +450,12 @@ export function AgentPanel({
                     行内容，看清楚再接受。
                   </p>
                 )}
+                {pending.actions.some((a) => a.type === "setContent") && (
+                  <p className="agent-warn">
+                    注意：这次会整篇替换内容，原来的文字会全部换掉（接受后仍可按
+                    Ctrl+Z 撤销）。
+                  </p>
+                )}
                 {pending.skipped.length > 0 && (
                   <p className="agent-skip">
                     已跳过：{pending.skipped.join("；")}
@@ -488,8 +494,8 @@ export function AgentPanel({
               void send();
             }
           }}
-          placeholder="例如：内容太挤了，帮我排得清爽一点"
-          rows={2}
+          placeholder="例如：内容太挤了，帮我排得清爽一点；也可以直接把整段简历粘进来让它排版"
+          rows={Math.min(8, Math.max(2, input.split("\n").length))}
           aria-label="告诉助手你想怎么排"
         />
         <button type="submit" disabled={busy || !input.trim()} aria-label="发送">

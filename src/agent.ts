@@ -7,6 +7,7 @@ import {
   uid,
 } from "./flow";
 import type { Kind, Line, Resume, Settings, Template } from "./flow";
+import { contentToLines } from "./importText";
 
 export const AGENT_CONFIG_KEY = "diyjobresume.agent.v1";
 export const AGENT_TURNS_KEY = "diyjobresume.agent.turns.v1";
@@ -137,12 +138,21 @@ export const AGENT_CONTENT_PROMPT = `
 14 {"type":"insert","after":4,"kind":"bullet","text":"新的要点"} 在第 4 行后面插入一行（after 用 0 表示插到最前面）
 15 {"type":"remove","line":4} 删除第 4 行
 16 {"type":"replace","find":"原文片段","replace":"新片段"} 全文替换（谨慎使用）
+17 {"type":"setContent","text":"# 姓名\n手机 | 邮箱\n## 板块\n### 标题 | 角色 | 时间\n- 要点"} 整份重排：用一条动作把整篇内容替换掉
 
 内容编辑规则：
 - 行号以「正文」列表里每行前面的数字为准，一次最多动 8 行；不要整篇重写，除非用户明确要求。
 - 只能润色、精简、补全用户已经给出的信息，绝不能编造学历、公司、时间、数字、奖项；缺少的信息用「待补充」占位。
 - 经历行的格式是「左侧 | 中间 | 右侧」，用 " | " 分隔，删除或改写时保持这个结构。
 - 保持中文表达自然、简短，每条要点不超过 60 字。
+- 用户一次性发来一整份简历（开头是姓名、接着联系方式，再用【板块】或多个小标题分段，经历行带公司/角色/时间，条目以 · • - 开头）时，用**一个** setContent 动作把全文整理成结构化文本，不要逐行 setText/insert：
+  · 第一行写成 "# 姓名"；
+  · 联系方式那一两行原样保留为普通行（不要画蛇添足加标签）；
+  · "【个人总结】"这类标题改成 "## 个人总结"；没有方括号但本身就是板块名的（教育背景 / 实习经历 / 项目经历 / 专业技能 / 证书 等）也改成 "## xx"；
+  · "► 公司  职位  2026.05 – 2026.09" 改成 "### 公司 | 职位 | 2026.05 – 2026.09"；"学校  专业  学历  时间" 同样合并成 "### 学校 | 专业 学历 | 时间"；
+  · 以 · • ● - 或数字编号开头的条目改成 "- 要点"；数字编号保留成 "1. "；
+  · 其余内容原样作为普通行；空行丢掉。
+  · 公司名、学校名、专业、日期、数字、证书名称一律照抄，不润色、不合并、不编造；用户明确说“顺便改一下措辞”才动文字。
 `;
 
 export const AGENT_SYSTEM_PROMPT = `你是简历助手。用户会用中文描述需求；默认只调整「样式与结构」，不改动用户写下的文字，只有用户明确要求改写内容时才动文字。
@@ -517,6 +527,16 @@ export function applyAgentActions(
       };
       if (!count) skipped.push(`没找到「${find}」`);
       else notes.push(`替换「${find}」共 ${count} 处`);
+    } else if (type === "setContent") {
+      const text =
+          typeof action.text === "string" ? action.text.slice(0, 150000) : "",
+        lines = text.trim() ? contentToLines(text) : [];
+      if (!lines.length) {
+        skipped.push("整篇内容为空或读不出来");
+        continue;
+      }
+      next = { ...next, lines };
+      notes.push(`整篇重排（${lines.length} 行）`);
     } else {
       skipped.push(`不支持的动作「${type}」`);
     }

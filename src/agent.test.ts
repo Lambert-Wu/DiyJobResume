@@ -133,6 +133,45 @@ describe("agent content actions", () => {
   });
 });
 
+describe("agent whole-document action", () => {
+  it("rebuilds the resume from a pasted block of text", () => {
+    const before = doc();
+    const next = applyAgentActions(before, [
+      {
+        type: "setContent",
+        text:
+          "李景阳\n电话：18319206783 ｜ 邮箱：a@b.com\n【项目经历】\n► 某项目   负责人   2025.01 – 2025.06\n· 做了点事",
+      },
+    ]);
+    const markdown = toMarkdown(next.doc.lines);
+    expect(markdown).toContain("# 李景阳");
+    expect(markdown).toContain("## 项目经历");
+    expect(markdown).toContain("### 某项目 | 负责人 | 2025.01 – 2025.06");
+    expect(markdown).toContain("- 做了点事");
+    expect(next.notes[0]).toContain("整篇重排");
+    // 只换内容，模板和样式保持不变
+    expect(next.doc.template).toBe(before.template);
+    expect(next.doc.settings).toEqual(before.settings);
+  });
+  it("also accepts markdown from the model", () => {
+    const next = applyAgentActions(doc(), [
+      { type: "setContent", text: "# 李四\n## 教育背景\n- 某大学" },
+    ]);
+    expect(next.doc.lines[0]).toMatchObject({ kind: "name", text: "李四" });
+    expect(next.doc.lines[1]).toMatchObject({
+      kind: "section",
+      text: "教育背景",
+    });
+    expect(next.doc.lines[2].kind).toBe("bullet");
+  });
+  it("skips empty content instead of wiping the resume", () => {
+    const before = doc();
+    const next = applyAgentActions(before, [{ type: "setContent", text: "  " }]);
+    expect(next.doc).toBe(before);
+    expect(next.skipped).toHaveLength(1);
+  });
+});
+
 describe("agent conversation memory", () => {
   it("passes earlier turns and what was applied to the model", () => {
     const messages = buildAgentMessages(
