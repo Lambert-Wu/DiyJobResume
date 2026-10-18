@@ -227,9 +227,8 @@ export const AGENT_REVIEW_PROMPT = `你现在的任务是给一份「已经初�
 - 整体版式：template、font、fontSize、lineHeight、spacing、margins、accent、headerAlign、compact
 - 清理空行：removeEmptyLines
 
-绝对不能动文字：
-- 不要使用 setText、replace、setContent、insert、remove
-- 不要改写、润色、删减、增加任何一句内容
+文字以「不改」为默认；用户在对话里明确要求改写、精简、补写时才可以动字，
+动字必须保持原意、不许编造公司/学校/时间/数字，并且只能在确实需要时小范围修改。
 
 用户没有特别说明时，优先保证这几件事：
 1) 姓名在第一行，联系方式紧跟其后；
@@ -240,6 +239,10 @@ export const AGENT_REVIEW_PROMPT = `你现在的任务是给一份「已经初�
 // AI 复核只允许这些动作：改类型、调版式、删空行，绝不碰文字内容
 const REVIEW_ACTIONS = new Set([
   "setKind",
+  "setText",
+  "insert",
+  "remove",
+  "replace",
   "moveSection",
   "template",
   "font",
@@ -267,6 +270,7 @@ export async function reviewLayout(
 ): Promise<AgentReply> {
   const system =
     AGENT_SYSTEM_PROMPT +
+    AGENT_CONTENT_PROMPT +
     "\n\n" +
     AGENT_REVIEW_PROMPT +
     "\n\n当前简历参数与正文：\n" +

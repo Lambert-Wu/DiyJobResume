@@ -210,15 +210,15 @@ describe("AI layout review", () => {
       "原始文字",
     );
     expect(calls[0].url).toBe("https://api.example.com/v1/chat/completions");
-    expect(calls[0].body.messages[0].content).toContain("绝对不能动文字");
+    expect(calls[0].body.messages[0].content).toContain("文字以「不改」为默认");
     expect(calls[0].body.messages[0].content).toContain("教育背景");
     expect(calls[0].body.messages[1].content).toContain("原始简历");
     expect(reply.actions[0]).toMatchObject({ type: "setKind", line: 5 });
-    // 白名单：改类型可以，改文字不行
+    // 复核和对话同权：结构、文字都能改；整篇重写的 setContent 仍不允许
     expect(isReviewAction("setKind")).toBe(true);
     expect(isReviewAction("removeEmptyLines")).toBe(true);
-    expect(isReviewAction("setText")).toBe(false);
-    expect(isReviewAction("remove")).toBe(false);
+    expect(isReviewAction("setText")).toBe(true);
+    expect(isReviewAction("remove")).toBe(true);
     expect(isReviewAction("setContent")).toBe(false);
     vi.unstubAllGlobals();
   });

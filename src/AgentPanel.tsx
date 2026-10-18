@@ -18,7 +18,6 @@ import {
   describeDoc,
   isReviewAction,
   reviewLayout,
-  stripStructure,
   turnsKey,
   loadAgentConfig,
   noticeAccepted,
@@ -27,7 +26,7 @@ import {
 } from "./agent";
 import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
 import { layoutSteps, textToLines } from "./importText";
-import { toMarkdown } from "./flow";
+
 import type { Resume } from "./flow";
 
 const EXAMPLES = [
@@ -363,11 +362,10 @@ export function AgentPanel({
         const pendingLabel = "AI 复核格式…";
         setProgress((all) => [...all, pendingLabel]);
         const draft = last,
-          beforeText = stripStructure(toMarkdown(draft.lines)),
           controller = new AbortController(),
           timer = window.setTimeout(() => controller.abort(), 60000);
         try {
-          // 和对话里「帮我把格式调好」同一套动作协议，但只保留不改字的动作
+          // 和对话里「帮我把格式调好」完全同一套动作：排版和文字都能改
           const reply = await reviewLayout(
             config,
             draft,
@@ -380,24 +378,26 @@ export function AgentPanel({
           const applied = actions.length
             ? applyAgentActions(draft, actions)
             : null;
-          const afterText = applied
-            ? stripStructure(toMarkdown(applied.doc.lines))
-            : beforeText;
-          if (applied?.notes.length && afterText === beforeText) {
+          if (applied?.notes.length) {
             last = applied.doc;
+            const removed = actions.filter(
+              (action) => String(action.type) === "remove",
+            ).length;
             setProgress((all) => [
               ...all.filter((step) => step !== pendingLabel),
-              `AI 复核完成（调整 ${applied.notes.length} 项）`,
+              `AI 复核完成（调整 ${applied.notes.length} 项${
+                removed ? `，删除 ${removed} 行` : ""
+              }）`,
             ]);
           } else if (actions.length) {
             setProgress((all) => [
               ...all.filter((step) => step !== pendingLabel),
-              "AI 复核结果与原文对不上，已忽略，沿用本地排版",
+              "AI 复核给的动作都没能执行，沿用本地排版",
             ]);
           } else {
             setProgress((all) => [
               ...all.filter((step) => step !== pendingLabel),
-              "AI 复核没有给出可用的格式调整，沿用本地排版",
+              "AI 复核没有给出可用的调整，沿用本地排版",
             ]);
           }
         } catch {
