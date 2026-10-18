@@ -2277,3 +2277,40 @@ a {
     display: none !important;
   }
 }
+.agent-setup-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.agent-setup-actions button {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+.agent-quick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid #eee7dd;
+  background: #fdfbf8;
+  font-size: 11px;
+  color: #8b8177;
+}
+.agent-quick button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #e2d7c9;
+  background: #fff;
+  color: #6d4938;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+.agent-quick button:hover:not(:disabled) {
+  border-color: #c9a48c;
+  background: #fdf6f0;
+}
+.agent-quick button:disabled {
+  opacity: 0.5;
+}

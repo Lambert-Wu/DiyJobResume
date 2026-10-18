@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { AlertTriangle, Bot, Send, Settings2, Sparkles, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  Eraser,
+  Minimize2,
+  Send,
+  Settings2,
+  Sparkles,
+  X,
+} from "lucide-react";
 import {
   AGENT_SYSTEM_PROMPT,
   acceptNotice,
@@ -18,17 +27,48 @@ const EXAMPLES = [
   "内容有点挤，帮我排得清爽一点",
   "换成学术风，表头左对齐",
   "把专业技能排到最前面",
-  "一页放不下，帮我压缩到一页",
+  "行距松一点，看着更透气",
 ];
+const TURNS_KEY = "diyjobresume.agent.turns.v1";
+
+function loadTurns(): AgentTurn[] {
+  try {
+    const raw = localStorage.getItem(TURNS_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as AgentTurn[];
+    return Array.isArray(list)
+      ? list
+          .filter(
+            (t) =>
+              t &&
+              (t.role === "user" || t.role === "assistant") &&
+              typeof t.text === "string",
+          )
+          .slice(-30)
+      : [];
+  } catch {
+    return [];
+  }
+}
+function errorText(e: unknown) {
+  const name = e instanceof Error ? e.name : "",
+    message = String(e instanceof Error ? e.message : e);
+  if (name === "AbortError") return "请求超时（90 秒），检查接口地址和网络。";
+  if (/fetch/i.test(message))
+    return "请求失败：地址可能不对，或对方接口不允许浏览器直连（CORS）。";
+  return message;
+}
 
 export function AgentPanel({
   doc,
   pageCount,
+  measurePages,
   onApply,
   onClose,
 }: {
   doc: Resume;
   pageCount: number;
+  measurePages: (doc: Resume) => number;
   onApply: (next: Resume) => void;
   onClose: () => void;
 }) {
@@ -37,13 +77,16 @@ export function AgentPanel({
     [setupOpen, setSetupOpen] = useState(() => !loadAgentConfig().apiKey),
     [agreed, setAgreed] = useState(noticeAccepted),
     [input, setInput] = useState(""),
-    [turns, setTurns] = useState<AgentTurn[]>([]),
+    [turns, setTurns] = useState<AgentTurn[]>(loadTurns),
     [pending, setPending] = useState<{
-      actions: AgentAction[];
+      result: Resume;
       notes: string[];
       skipped: string[];
+      actions?: AgentAction[];
     } | null>(null),
     [busy, setBusy] = useState(false),
+    [testing, setTesting] = useState(false),
+    [testResult, setTestResult] = useState(""),
     [error, setError] = useState("");
   const [pos, setPos] = useState(() => ({
     x: Math.max(12, window.innerWidth - 400),
@@ -56,6 +99,14 @@ export function AgentPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, pending, busy, error]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(TURNS_KEY, JSON.stringify(turns.slice(-30)));
+    } catch {
+      /* 存不下也不影响使用 */
+    }
+  }, [turns]);
+
   const drag = (e: ReactPointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
@@ -66,8 +117,14 @@ export function AgentPanel({
     handle.setPointerCapture(e.pointerId);
     const move = (event: PointerEvent) =>
       setPos({
-        x: Math.max(8, Math.min(window.innerWidth - 140, base.x + event.clientX - startX)),
-        y: Math.max(8, Math.min(window.innerHeight - 80, base.y + event.clientY - startY)),
+        x: Math.max(
+          8,
+          Math.min(window.innerWidth - 140, base.x + event.clientX - startX),
+        ),
+        y: Math.max(
+          8,
+          Math.min(window.innerHeight - 80, base.y + event.clientY - startY),
+        ),
       });
     const end = () => {
       handle.removeEventListener("pointermove", move);
@@ -92,6 +149,28 @@ export function AgentPanel({
     setError("");
   };
 
+  const test = async () => {
+    setTesting(true);
+    setTestResult("");
+    try {
+      const reply = await requestAgent(
+        {
+          baseUrl: draft.baseUrl.trim() || "https://api.openai.com/v1",
+          model: draft.model.trim(),
+          apiKey: draft.apiKey.trim(),
+        },
+        "你是连通性测试，只回复 ok。",
+        [],
+        "ping",
+      );
+      setTestResult(`连接正常（模型回复：${reply.reply.slice(0, 20)}）`);
+    } catch (e) {
+      setTestResult(`连接失败：${errorText(e)}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const send = async () => {
     const text = input.trim();
     if (!text || busy) return;
@@ -104,7 +183,9 @@ export function AgentPanel({
     setError("");
     setPending(null);
     const system =
-      AGENT_SYSTEM_PROMPT + "\n\n当前简历排版参数：\n" + describeDoc(doc, pageCount);
+      AGENT_SYSTEM_PROMPT +
+      "\n\n当前简历排版参数：\n" +
+      describeDoc(doc, pageCount);
     const controller = new AbortController(),
       timer = window.setTimeout(() => controller.abort(), 90000);
     try {
@@ -124,40 +205,116 @@ export function AgentPanel({
       if (reply.actions.length) {
         const applied = applyAgentActions(doc, reply.actions);
         setPending({
-          actions: reply.actions,
+          result: applied.doc,
           notes: applied.notes,
           skipped: applied.skipped,
+          actions: reply.actions,
         });
       }
     } catch (e) {
-      const name = e instanceof Error ? e.name : "",
-        message = String(e instanceof Error ? e.message : e);
-      setError(
-        name === "AbortError"
-          ? "请求超时（90 秒），检查接口地址和网络。"
-          : /fetch/i.test(message)
-            ? "请求失败：地址可能不对，或对方接口不允许浏览器直连（CORS）。"
-            : message,
-      );
+      setError(errorText(e));
     } finally {
       window.clearTimeout(timer);
       setBusy(false);
     }
   };
 
+  // 自己量页数，不够就再压一轮，最多三轮
+  const fitOnePage = async () => {
+    if (busy) return;
+    if (!config.apiKey.trim() || !config.model.trim()) {
+      setSetupOpen(true);
+      setError("先填好接口地址、模型名和 Key，再点保存。");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setPending(null);
+    setTurns((all) => [...all, { role: "user", text: "帮我把简历压到一页" }]);
+    const before = measurePages(doc);
+    let current = doc,
+      round = 0,
+      pages = before;
+    const notes: string[] = [],
+      skipped: string[] = [];
+    try {
+      while (pages > 1 && round < 3) {
+        round++;
+        const system =
+          AGENT_SYSTEM_PROMPT +
+          `\n\n当前简历排版参数：\n${describeDoc(current, pages)}` +
+          `\n\n任务：这份简历现在排成 ${pages} 页，请给出让页数更接近 1 页的排版动作（优先 compact、缩小字号、收紧段距、减小页边距），不要改文字。`;
+        const reply = await requestAgent(
+          config,
+          system,
+          [],
+          `第 ${round} 轮：继续压缩到 1 页。`,
+        );
+        const applied = applyAgentActions(current, reply.actions);
+        if (!applied.notes.length) {
+          skipped.push(...applied.skipped);
+          break;
+        }
+        current = applied.doc;
+        notes.push(...applied.notes.map((note) => `第 ${round} 轮：${note}`));
+        skipped.push(...applied.skipped);
+        pages = measurePages(current);
+      }
+      const after = measurePages(current);
+      if (!notes.length) {
+        setTurns((all) => [
+          ...all,
+          {
+            role: "assistant",
+            text:
+              before <= 1
+                ? "现在就是 1 页，不用压缩。"
+                : "模型这次没给出可执行的压缩动作，换个说法再试？",
+          },
+        ]);
+        return;
+      }
+      setPending({
+        result: current,
+        notes: [`页数：${before} 页 → ${after} 页`, ...notes],
+        skipped,
+      });
+      setTurns((all) => [
+        ...all,
+        {
+          role: "assistant",
+          text:
+            after <= 1
+              ? `已经压到 1 页（改了 ${round} 轮）。确认后点「应用到简历」。`
+              : `压到 ${after} 页，仍超过一页。可以先应用看看，或者再点一次继续压。`,
+        },
+      ]);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const apply = () => {
     if (!pending) return;
-    // 按当前文档重算一遍，避免中途改过内容被旧快照覆盖
-    const fresh = applyAgentActions(doc, pending.actions);
-    onApply(fresh.doc);
+    // 有原始动作就按当前文档重算，避免中途改过内容被旧快照覆盖
+    const next = pending.actions
+      ? applyAgentActions(doc, pending.actions).doc
+      : pending.result;
+    onApply(next);
     setTurns((all) => [
       ...all,
-      {
-        role: "assistant",
-        text: `已应用 ${fresh.notes.length} 项改动，按 Ctrl+Z 可以撤销。`,
-      },
+      { role: "assistant", text: "已应用到简历，按 Ctrl+Z 可以撤销。" },
     ]);
     setPending(null);
+  };
+
+  const clear = () => {
+    setTurns([]);
+    setPending(null);
+    setError("");
+    setTestResult("");
   };
 
   return (
@@ -171,6 +328,9 @@ export function AgentPanel({
         <b>排版助手</b>
         <span className="agent-sub">只改排版，不改文字</span>
         <div className="agent-tools">
+          <button aria-label="清空对话" title="清空对话" onClick={clear}>
+            <Eraser size={15} />
+          </button>
           <button
             aria-label="接口设置"
             title="接口设置"
@@ -222,13 +382,19 @@ export function AgentPanel({
               onChange={(e) => setAgreed(e.target.checked)}
             />
             <span>
-              我了解：点发送时，<b>排版参数和板块标题</b>会发送到上面的地址（正文不会发送）；
-              Key 只存在本机浏览器。
+              我了解：点发送时，<b>排版参数和板块标题</b>
+              会发送到上面的地址（正文不会发送）；Key 只存在本机浏览器。
             </span>
           </label>
-          <button className="primary" disabled={!agreed} onClick={save}>
-            保存并启用
-          </button>
+          <div className="agent-setup-actions">
+            <button disabled={testing || !draft.model} onClick={() => void test()}>
+              {testing ? "测试中…" : "测试连接"}
+            </button>
+            <button className="primary" disabled={!agreed} onClick={save}>
+              保存并启用
+            </button>
+          </div>
+          {testResult && <p className="agent-skip">{testResult}</p>}
         </section>
       )}
 
@@ -236,7 +402,9 @@ export function AgentPanel({
         {!turns.length && (
           <div className="agent-empty">
             <Bot size={18} />
-            <p>用一句话说清楚你想怎么排，我会先给出改动清单，你确认后才生效。</p>
+            <p>
+              用一句话说清楚你想怎么排，我会先给出改动清单，你确认后才生效。
+            </p>
             <div className="agent-chips">
               {EXAMPLES.map((example) => (
                 <button key={example} onClick={() => setInput(example)}>
@@ -251,7 +419,11 @@ export function AgentPanel({
             {turn.text}
           </div>
         ))}
-        {busy && <div className="agent-msg assistant agent-thinking">正在生成排版方案…</div>}
+        {busy && (
+          <div className="agent-msg assistant agent-thinking">
+            正在生成排版方案…
+          </div>
+        )}
         {error && (
           <div className="agent-error">
             <AlertTriangle size={14} />
@@ -269,7 +441,9 @@ export function AgentPanel({
                   ))}
                 </ul>
                 {pending.skipped.length > 0 && (
-                  <p className="agent-skip">已跳过：{pending.skipped.join("；")}</p>
+                  <p className="agent-skip">
+                    已跳过：{pending.skipped.join("；")}
+                  </p>
                 )}
                 <div className="agent-plan-actions">
                   <button className="primary" onClick={apply}>
@@ -280,11 +454,24 @@ export function AgentPanel({
               </>
             ) : (
               <p className="agent-skip">
-                这次没有可执行的排版改动{pending.skipped.length ? "：" + pending.skipped.join("；") : "。"}
+                这次没有可执行的排版改动
+                {pending.skipped.length ? "：" + pending.skipped.join("；") : "。"}
               </p>
             )}
           </div>
         )}
+      </div>
+
+      <div className="agent-quick">
+        <button
+          disabled={busy}
+          onClick={() => void fitOnePage()}
+          title="自动测量页数，一轮不够就继续压，最多三轮"
+        >
+          <Minimize2 size={13} />
+          压到一页
+        </button>
+        <span>当前 {pageCount} 页</span>
       </div>
 
       <form

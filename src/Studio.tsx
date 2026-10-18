@@ -192,6 +192,27 @@ function mdCaretTop(el: HTMLTextAreaElement, position: number) {
   mirror.remove();
   return top;
 }
+function measureRow(
+  node: HTMLDivElement,
+  settings: Settings,
+  template: Template,
+  contact: boolean,
+  line: Line,
+  text: string,
+  continued: boolean,
+) {
+  node.className = `flow-row row-${line.kind} ${contact ? "row-contact" : ""} ${continued ? "continued" : ""}`;
+  node.dataset.order = String(line.order || 1);
+  const st = rowStyle(line, settings, continued);
+  Object.assign(node.style, {
+    fontSize: st.fontSize + "px",
+    paddingTop: st.paddingTop + "px",
+    paddingBottom: st.paddingBottom + "px",
+    lineHeight: String(st.lineHeight),
+  });
+  node.innerHTML = lineHtml(line, text, template);
+  return Math.ceil(node.getBoundingClientRect().height * 100) / 100 + 0.25;
+}
 function SimpleInput({
   line,
   index,
@@ -631,25 +652,52 @@ export default function Studio() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
-  useLayoutEffect(() => {
+  const measureNode = useRef<HTMLDivElement | null>(null);
+  const measureHost = () => {
     const host = measureRef.current;
-    if (!host) return;
-    const node = document.createElement("div");
-    host.replaceChildren(node);
-    const s = view.settings;
-    const measure = (line: Line, text: string, continued: boolean) => {
-      node.className = `flow-row row-${line.kind} ${line.id === contactId ? "row-contact" : ""} ${continued ? "continued" : ""}`;
-      node.dataset.order = String(line.order || 1);
-      const st = rowStyle(line, s, continued);
-      Object.assign(node.style, {
-        fontSize: st.fontSize + "px",
-        paddingTop: st.paddingTop + "px",
-        paddingBottom: st.paddingBottom + "px",
-        lineHeight: String(st.lineHeight),
-      });
-      node.innerHTML = lineHtml(line, text, view.template);
-      return Math.ceil(node.getBoundingClientRect().height * 100) / 100 + 0.25;
-    };
+    if (!host) return null;
+    if (!measureNode.current) measureNode.current = document.createElement("div");
+    if (measureNode.current.parentElement !== host)
+      host.replaceChildren(measureNode.current);
+    return measureNode.current;
+  };
+  // 给排版助手用：同步算一份文档会排成几页（不改状态）
+  const measurePages = (target: Resume) => {
+    const node = measureHost();
+    if (!node) return pages.length;
+    const contact = target.lines.find(
+      (line, index) =>
+        line.kind === "text" && target.lines[index - 1]?.kind === "name",
+    )?.id;
+    const measure = (line: Line, text: string, continued: boolean) =>
+      measureRow(
+        node,
+        target.settings,
+        target.template,
+        line.id === contact,
+        line,
+        text,
+        continued,
+      );
+    return paginate(
+      target.lines,
+      PAGE.height - target.settings.top - target.settings.bottom,
+      measure,
+    ).length;
+  };
+  useLayoutEffect(() => {
+    const node = measureHost();
+    if (!node) return;
+    const measure = (line: Line, text: string, continued: boolean) =>
+      measureRow(
+        node,
+        view.settings,
+        view.template,
+        line.id === contactId,
+        line,
+        text,
+        continued,
+      );
     const active = document.activeElement as HTMLElement;
     if (!preview && active?.dataset.edit) {
       const offset = cursorOffset(active);
@@ -665,7 +713,13 @@ export default function Studio() {
         pendingCaret.current = { id: active.dataset.edit, offset: total };
       }
     }
-    setPages(paginate(view.lines, PAGE.height - s.top - s.bottom, measure));
+    setPages(
+      paginate(
+        view.lines,
+        PAGE.height - view.settings.top - view.settings.bottom,
+        measure,
+      ),
+    );
   }, [
     view.lines,
     view.settings,
@@ -2214,6 +2268,7 @@ export default function Studio() {
         <AgentPanel
           doc={doc}
           pageCount={pages.length}
+          measurePages={measurePages}
           onApply={(next) => historyUpdate(next)}
           onClose={() => setAgentOpen(false)}
         />
