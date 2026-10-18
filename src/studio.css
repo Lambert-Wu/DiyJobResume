@@ -654,6 +654,30 @@ a {
 .paper-row.drop-target {
   border-top: 3px solid #b87559;
 }
+/* 从左侧列表定位过来时，正文对应行短暂亮一下 */
+.paper-row.flash-row {
+  animation: row-flash 1.1s ease-out;
+}
+@keyframes row-flash {
+  0% {
+    background: color-mix(in srgb, var(--accent) 30%, #fff);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, #fff);
+  }
+  35% {
+    background: color-mix(in srgb, var(--accent) 22%, #fff);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 38%, #fff);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .paper-row.flash-row {
+    animation-duration: 0.01ms;
+    background: color-mix(in srgb, var(--accent) 18%, #fff);
+  }
+}
 .drag-actions {
   position: absolute;
   right: 0;
@@ -1319,10 +1343,13 @@ a {
   .paper-row,
   .paper-row.selected,
   .paper-row.armed,
+  .paper-row.flash-row,
   .paper-row:has([contenteditable="true"]:focus) {
     outline: none !important;
     border: 0 !important;
     background: none !important;
+    animation: none !important;
+    box-shadow: none !important;
   }
   .floating-picture {
     outline: none !important;
@@ -1357,6 +1384,24 @@ a {
 }
 .edit-field.active {
   background: transparent;
+}
+/* 从右侧正文定位回来时，编辑区对应行短暂亮一下 */
+.edit-field.flash-line {
+  animation: field-flash 1.1s ease-out;
+}
+@keyframes field-flash {
+  0% {
+    background: #f3ddca;
+    border-left-color: #b87559;
+  }
+  55% {
+    background: #f9eee4;
+    border-left-color: #cda48d;
+  }
+  100% {
+    background: transparent;
+    border-left-color: transparent;
+  }
 }
 .field-entry {
   background: transparent;

@@ -14,6 +14,7 @@ import {
   X,
   Plus,
   GripVertical,
+  Crosshair,
   Check,
   ChevronDown,
   FileText,
@@ -223,6 +224,7 @@ function Editable({
   onMove,
   onBlur,
   ghost = false,
+  flashing = false,
 }: {
   piece: Piece;
   template: Template;
@@ -238,6 +240,7 @@ function Editable({
   onMove: (target: string) => void;
   onBlur: () => void;
   ghost?: boolean;
+  flashing?: boolean;
 }) {
   const el = useRef<HTMLDivElement>(null),
     composing = useRef(false),
@@ -259,7 +262,7 @@ function Editable({
   };
   return (
     <div
-      className={`paper-row ${ghost ? "ghost-row" : ""} ${selected ? "selected" : ""} ${armed ? "armed" : ""}`}
+      className={`paper-row ${ghost ? "ghost-row" : ""} ${selected ? "selected" : ""} ${armed ? "armed" : ""} ${flashing ? "flash-row" : ""}`}
       data-preview={ghost ? "true" : undefined}
       onPointerDown={(e) => {
         if (!ghost) holdDrag(e, piece.line.id, onMove);
@@ -384,7 +387,8 @@ export default function Studio() {
     [picSelection, setPicSelection] = useState(""),
     [imageKind, setImageKind] = useState("证件照");
   const [hovered, setHovered] = useState(""),
-    [hoverGroup, setHoverGroup] = useState("");
+    [hoverGroup, setHoverGroup] = useState(""),
+    [flash, setFlash] = useState("");
   const [panelPosition, setPanelPosition] = useState({ x: 16, y: 82 });
   const [cssOpen, setCssOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -417,6 +421,8 @@ export default function Studio() {
     imageRef = useRef<HTMLInputElement>(null),
     editorRef = useRef<HTMLDivElement>(null);
   const pendingCaret = useRef<{ id: string; offset: number } | null>(null);
+  const flashTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const contactId = view.lines.find(
     (line, index) =>
       line.kind === "text" && view.lines[index - 1]?.kind === "name",
@@ -627,6 +633,7 @@ export default function Studio() {
   }, [autoZoom, leftWidth, mobile]);
   const locate = (id: string) => {
     setSelected(id);
+    flashLine(id);
     if (mode === "simple") {
       const el = editorRef.current?.querySelector(`[data-field="${id}"]`);
       el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -644,6 +651,34 @@ export default function Studio() {
         el.scrollTop = Math.max(0, index * 25 - el.clientHeight / 3);
       }
     }
+  };
+  const flashLine = (id: string) => {
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    setFlash(id);
+    flashTimer.current = window.setTimeout(() => setFlash(""), 1200);
+  };
+  const revealInPaper = (id: string) => {
+    setSelected(id);
+    setPicSelection("");
+    flashLine(id);
+    const scrollToRow = () => {
+      const scroller = workspace.current,
+        row = scroller?.querySelector<HTMLElement>(`[data-line="${id}"]`);
+      if (!scroller || !row) return;
+      const box = scroller.getBoundingClientRect(),
+        at = row.getBoundingClientRect();
+      scroller.scrollTo({
+        top: Math.max(
+          0,
+          scroller.scrollTop + at.top - box.top - (box.height - at.height) / 2,
+        ),
+        behavior: "smooth",
+      });
+    };
+    if (window.innerWidth <= 900 && mobile !== "preview") {
+      setMobile("preview");
+      window.setTimeout(scrollToRow, 90);
+    } else scrollToRow();
   };
   const addLine = (
     after: string,
@@ -1197,7 +1232,7 @@ export default function Studio() {
                   <div
                     key={line.id}
                     data-field={line.id}
-                    className={`edit-field field-${line.kind} ${selected === line.id ? "active" : ""} ${hovered === line.id ? "hovered" : ""}`}
+                    className={`edit-field field-${line.kind} ${selected === line.id ? "active" : ""} ${hovered === line.id ? "hovered" : ""} ${flash === line.id ? "flash-line" : ""}`}
                     onMouseEnter={() => setHovered(line.id)}
                     onMouseLeave={() => setHovered("")}
                     onPointerDown={(e) =>
@@ -1208,6 +1243,13 @@ export default function Studio() {
                   >
                     <div className="block-gutter">
                       <div>
+                        <button
+                          aria-label={`在简历中定位第 ${index + 1} 行`}
+                          title="在简历中定位"
+                          onClick={() => revealInPaper(line.id)}
+                        >
+                          <Crosshair size={13} />
+                        </button>
                         <button
                           aria-label={`添加内容 ${index + 1}`}
                           title="选择要添加的内容"
@@ -1429,6 +1471,7 @@ export default function Studio() {
                       contact={piece.line.id === contactId}
                       settings={view.settings}
                       ghost={preview?.ids.includes(piece.line.id)}
+                      flashing={flash === piece.line.id}
                       selected={
                         selected === piece.line.id ||
                         hovered === piece.line.id ||
