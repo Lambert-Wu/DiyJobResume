@@ -1138,6 +1138,33 @@ a {
   line-height: 1.85;
   margin: 0 0 18px;
 }
+.help-body .help-list {
+  margin: -8px 0 18px;
+  padding-left: 22px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #4a443d;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.help-body .help-list li::marker {
+  color: #b87559;
+}
+.help-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: #f3efe9;
+  border: 1px solid #e7e0d6;
+  color: #8a4e33;
+  white-space: nowrap;
+}
+.help-body p.muted {
+  font-size: 12px;
+}
 .muted {
   color: #92887a;
 }
