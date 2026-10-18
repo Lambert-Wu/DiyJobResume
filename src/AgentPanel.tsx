@@ -327,11 +327,7 @@ export function AgentPanel({
         <Sparkles size={16} />
         <b>排版助手</b>
         <span className="agent-sub">
-          {turns.length
-            ? `已记住 ${Math.ceil(turns.length / 2)} 轮对话`
-            : docked
-              ? "占用样式面板，改完自动切回"
-              : "能改排版，也能改文字"}
+          {docked ? "占用样式面板，改完自动切回" : "能改排版，也能改文字"}
         </span>
         <div className="agent-tools">
           <button aria-label="清空对话" title="清空对话" onClick={clear}>
