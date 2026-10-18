@@ -497,7 +497,14 @@ export default function Studio() {
   const caretMark = useRef<{ id: string; offset: number } | null>(null);
   const markTimer = useRef(0);
   const mdMarkRef = useRef<HTMLDivElement>(null),
-    mdMarkTimer = useRef(0);
+    mdMarkTimer = useRef(0),
+    mdShowTimer = useRef(0);
+  const markScrolling = useRef(false);
+  const pendingMdMark = useRef<{
+    start: number;
+    length: number;
+    target: number;
+  } | null>(null);
   useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const contactId = view.lines.find(
     (line, index) =>
@@ -712,6 +719,7 @@ export default function Studio() {
     el: HTMLTextAreaElement,
     start: number,
     length: number,
+    scrollTop = el.scrollTop,
   ) => {
     const mark = mdMarkRef.current;
     if (!mark) return;
@@ -729,7 +737,7 @@ export default function Studio() {
     Object.assign(mark.style, {
       display: "block",
       left: rect.left + borderLeft + padLeft + "px",
-      top: rect.top + borderTop + top - el.scrollTop + "px",
+      top: rect.top + borderTop + top - scrollTop + "px",
       width: Math.max(0, el.clientWidth - padLeft - padRight) + "px",
       height: (next > top ? next - top : lineHeight) + "px",
     });
@@ -741,6 +749,13 @@ export default function Studio() {
     mdMarkTimer.current = window.setTimeout(() => {
       if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
     }, 1400);
+  };
+  const showPendingMdMark = (el: HTMLTextAreaElement) => {
+    const pending = pendingMdMark.current;
+    if (!pending) return;
+    pendingMdMark.current = null;
+    markScrolling.current = false;
+    showMdLineMark(el, pending.start, pending.length, pending.target);
   };
   const locate = (id: string) => {
     setSelected(id);
@@ -762,17 +777,29 @@ export default function Studio() {
       if (index < 0 || !el) return;
       const start =
           toMarkdown(lines.slice(0, index)).length + (index ? 1 : 0),
-        length = toMarkdown([lines[index]]).length;
+        length = toMarkdown([lines[index]]).length,
+        reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        top = mdCaretTop(el, start),
+        target = Math.min(
+          Math.max(0, el.scrollHeight - el.clientHeight),
+          Math.max(0, top - Math.min(24, el.clientHeight / 4)),
+        );
       mdSyncing.current = true;
       el.setSelectionRange(start, start + length);
-      el.scrollTop = Math.max(
-        0,
-        mdCaretTop(el, start) - Math.min(24, el.clientHeight / 4),
-      );
-      showMdLineMark(el, start, length);
       window.setTimeout(() => {
         mdSyncing.current = false;
       }, 150);
+      // 平滑滚动，滚到位（滚动事件停下来）之后再亮，避免高亮带悬在半路
+      pendingMdMark.current = { start, length, target };
+      markScrolling.current = true;
+      el.scrollTo({ top: target, behavior: reduced ? "auto" : "smooth" });
+      if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
+      window.clearTimeout(mdShowTimer.current);
+      // 本来就在目标位置、压根不会滚的情况，也要亮
+      mdShowTimer.current = window.setTimeout(
+        () => showPendingMdMark(el),
+        reduced ? 0 : 170,
+      );
     }
   };
   const flashLine = (id: string) => {
@@ -809,6 +836,9 @@ export default function Studio() {
   const jumpFromCaret = () => {
     const el = mdRef.current;
     if (!el || mdSyncing.current) return;
+    window.clearTimeout(mdShowTimer.current);
+    pendingMdMark.current = null;
+    markScrolling.current = false;
     if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
     const lines = ref.current.lines;
     if (!lines.length) return;
@@ -1465,7 +1495,14 @@ export default function Studio() {
               onClick={jumpFromCaret}
               onSelect={jumpFromCaret}
               onScroll={() => {
-                if (mdSyncing.current) return;
+                if (markScrolling.current) {
+                  const el = mdRef.current;
+                  window.clearTimeout(mdShowTimer.current);
+                  mdShowTimer.current = window.setTimeout(() => {
+                    if (el) showPendingMdMark(el);
+                  }, 130);
+                  return;
+                }
                 if (mdMarkRef.current) mdMarkRef.current.style.display = "none";
               }}
               onKeyUp={(e) => {
