@@ -220,20 +220,65 @@ export function changesDigest(turns: AgentTurn[]) {
   return out;
 }
 
-export const AGENT_REVIEW_PROMPT = `你是简历结构校对员。用户会给你两段内容：原始粘贴文字、初版解析（markdown）。
-你只调整「结构」，绝不改动文字：可以改行类型、拆分过长的行、合并被误拆的行、调整顺序，
-但不能增删任何文字、不能改写措辞、不能润色、不能补写。
+export const AGENT_REVIEW_PROMPT = `你现在的任务是给一份「已经初排好」的简历调整格式。
+可以动的：
+- 行类型：setKind（把该是要点的行改成 bullet、该是经历行的改成 entry、该是板块标题的改成 section）
+- 板块顺序：moveSection
+- 整体版式：template、font、fontSize、lineHeight、spacing、margins、accent、headerAlign、compact
+- 清理空行：removeEmptyLines
 
-输出格式（只输出 markdown 正文，不要解释、不要代码块）：
-- 第一行：# 姓名
-- 联系方式：保持一行普通文字
-- 板块标题：## 板块名
-- 经历行：### 左侧 | 中间 | 右侧（公司/学校 | 职位/专业 | 时间）
-- 条目：- 内容
-- 其余：普通一行
+绝对不能动文字：
+- 不要使用 setText、replace、setContent、insert、remove
+- 不要改写、润色、删减、增加任何一句内容
 
-重点检查：该是条目的行有没有 "- "、该是经历行的有没有拆成三栏、
-有没有把两条要点粘成一行、有没有把一条要点拆成多行。`;
+用户没有特别说明时，优先保证这几件事：
+1) 姓名在第一行，联系方式紧跟其后；
+2) 每个板块下面有内容，条目一律是 bullet；
+3) 经历行是「左侧 | 中间 | 右侧」三栏（公司/学校 | 职位/专业 | 时间）。
+只输出一个 JSON 对象，格式与平时一致。`;
+
+// AI 复核只允许这些动作：改类型、调版式、删空行，绝不碰文字内容
+const REVIEW_ACTIONS = new Set([
+  "setKind",
+  "moveSection",
+  "template",
+  "font",
+  "fontSize",
+  "lineHeight",
+  "spacing",
+  "margins",
+  "accent",
+  "ink",
+  "headerAlign",
+  "compact",
+  "removeEmptyLines",
+]);
+
+export function isReviewAction(type: string) {
+  return REVIEW_ACTIONS.has(type);
+}
+
+// 和对话里「帮我把格式调好」走同一套动作协议，只是把权限收紧到不改字
+export async function reviewLayout(
+  config: AgentConfig,
+  draft: Resume,
+  original: string,
+  signal?: AbortSignal,
+): Promise<AgentReply> {
+  const system =
+    AGENT_SYSTEM_PROMPT +
+    "\n\n" +
+    AGENT_REVIEW_PROMPT +
+    "\n\n当前简历参数与正文：\n" +
+    describeDoc(draft, 1, true);
+  return requestAgent(
+    config,
+    system,
+    [],
+    `下面是我粘贴的原始简历。请只调整格式与结构，不要改字：\n<<<\n${original.slice(0, 120000)}\n>>>`,
+    signal,
+  );
+}
 
 // 校验 AI 复核有没有偷偷改字：只比较正文内容，忽略空白和结构符号
 export function stripStructure(markdown: string) {
@@ -242,49 +287,6 @@ export function stripStructure(markdown: string) {
     .replace(/^\s*[-*]\s+/gm, "")
     .replace(/^\s*\d+[.)]\s+/gm, "")
     .replace(/[\s|｜·•]/g, "");
-}
-
-// 让模型只重排结构、不动文字；结果由调用方用 stripStructure 校验后才采用
-export async function reviewLayout(
-  config: AgentConfig,
-  original: string,
-  draft: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const url = config.baseUrl.trim().replace(/\/+$/, "") + "/chat/completions";
-  const res = await fetch(url, {
-    method: "POST",
-    signal,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${config.apiKey.trim()}`,
-    },
-    body: JSON.stringify({
-      model: config.model.trim(),
-      temperature: 0,
-      messages: [
-        { role: "system", content: AGENT_REVIEW_PROMPT },
-        {
-          role: "user",
-          content: `原始粘贴内容：\n<<<\n${original.slice(0, 120000)}\n>>>\n\n初版解析：\n<<<\n${draft.slice(0, 120000)}\n>>>`,
-        },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(
-      `复核接口返回 ${res.status}${detail ? "：" + detail.slice(0, 120) : ""}`,
-    );
-  }
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  return (data.choices?.[0]?.message?.content || "")
-    .trim()
-    .replace(/^```(?:markdown|md)?/i, "")
-    .replace(/```$/, "")
-    .trim();
 }
 
 export async function requestAgent(

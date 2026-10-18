@@ -6,6 +6,7 @@ import {
   buildAgentMessages,
   changesDigest,
   describeDoc,
+  isReviewAction,
   parseAgentReply,
   reviewLayout,
   stripStructure,
@@ -183,26 +184,42 @@ describe("AI layout review", () => {
     expect(stripStructure(draft + "多写的字")).not.toBe(stripStructure(draft));
   });
 
-  it("asks the model to restructure only and returns its markdown", async () => {
+  it("uses the same action protocol as chat, limited to layout actions", async () => {
     const calls: { url: string; body: any }[] = [];
     vi.stubGlobal("fetch", async (url: string, init: any) => {
       calls.push({ url, body: JSON.parse(init.body) });
       return {
         ok: true,
         json: async () => ({
-          choices: [{ message: { content: "```markdown\n# 李景阳\n- 一条\n```" } }],
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  reply: "把第 5 行改成要点",
+                  actions: [{ type: "setKind", line: 5, kind: "bullet" }],
+                }),
+              },
+            },
+          ],
         }),
       } as unknown as Response;
     });
-    const text = await reviewLayout(
+    const reply = await reviewLayout(
       { baseUrl: "https://api.example.com/v1/", model: "m", apiKey: "k" },
+      doc(),
       "原始文字",
-      "# 李景阳\n- 一条",
     );
     expect(calls[0].url).toBe("https://api.example.com/v1/chat/completions");
-    expect(calls[0].body.messages[0].content).toContain("绝不改动文字");
-    expect(calls[0].body.messages[1].content).toContain("原始粘贴内容");
-    expect(text).toBe("# 李景阳\n- 一条");
+    expect(calls[0].body.messages[0].content).toContain("绝对不能动文字");
+    expect(calls[0].body.messages[0].content).toContain("教育背景");
+    expect(calls[0].body.messages[1].content).toContain("原始简历");
+    expect(reply.actions[0]).toMatchObject({ type: "setKind", line: 5 });
+    // 白名单：改类型可以，改文字不行
+    expect(isReviewAction("setKind")).toBe(true);
+    expect(isReviewAction("removeEmptyLines")).toBe(true);
+    expect(isReviewAction("setText")).toBe(false);
+    expect(isReviewAction("remove")).toBe(false);
+    expect(isReviewAction("setContent")).toBe(false);
     vi.unstubAllGlobals();
   });
 });

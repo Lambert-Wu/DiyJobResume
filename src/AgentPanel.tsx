@@ -16,6 +16,7 @@ import {
   applyAgentActions,
   changesDigest,
   describeDoc,
+  isReviewAction,
   reviewLayout,
   stripStructure,
   turnsKey,
@@ -25,7 +26,7 @@ import {
   saveAgentConfig,
 } from "./agent";
 import type { AgentAction, AgentConfig, AgentTurn } from "./agent";
-import { contentToLines, layoutSteps, textToLines } from "./importText";
+import { layoutSteps, textToLines } from "./importText";
 import { toMarkdown } from "./flow";
 import type { Resume } from "./flow";
 
@@ -361,27 +362,42 @@ export function AgentPanel({
       if (aiReview && config.apiKey.trim() && config.model.trim()) {
         const pendingLabel = "AI 复核格式…";
         setProgress((all) => [...all, pendingLabel]);
-        const draft = toMarkdown(last.lines),
+        const draft = last,
+          beforeText = stripStructure(toMarkdown(draft.lines)),
           controller = new AbortController(),
           timer = window.setTimeout(() => controller.abort(), 60000);
         try {
-          const checked = await reviewLayout(
+          // 和对话里「帮我把格式调好」同一套动作协议，但只保留不改字的动作
+          const reply = await reviewLayout(
             config,
-            text,
             draft,
+            text,
             controller.signal,
           );
-          const lines = contentToLines(checked);
-          if (lines.length && stripStructure(checked) === stripStructure(draft)) {
-            last = { ...doc, lines };
+          const actions = reply.actions.filter((action) =>
+            isReviewAction(String(action.type)),
+          );
+          const applied = actions.length
+            ? applyAgentActions(draft, actions)
+            : null;
+          const afterText = applied
+            ? stripStructure(toMarkdown(applied.doc.lines))
+            : beforeText;
+          if (applied?.notes.length && afterText === beforeText) {
+            last = applied.doc;
             setProgress((all) => [
               ...all.filter((step) => step !== pendingLabel),
-              `AI 复核完成（${lines.length} 行）`,
+              `AI 复核完成（调整 ${applied.notes.length} 项）`,
+            ]);
+          } else if (actions.length) {
+            setProgress((all) => [
+              ...all.filter((step) => step !== pendingLabel),
+              "AI 复核结果与原文对不上，已忽略，沿用本地排版",
             ]);
           } else {
             setProgress((all) => [
               ...all.filter((step) => step !== pendingLabel),
-              "AI 复核结果与原文对不上，已忽略，沿用本地排版",
+              "AI 复核没有给出可用的格式调整，沿用本地排版",
             ]);
           }
         } catch {
